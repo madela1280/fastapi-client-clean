@@ -1,16 +1,13 @@
-from fastapi import FastAPI, Request
-from fastapi.responses import JSONResponse
+from fastapi import FastAPI, Query
 from fastapi.middleware.cors import CORSMiddleware
-import aiohttp
-import asyncio
+import requests
+import io
+import pandas as pd
 import os
-import re
-from datetime import datetime
-from pydantic import BaseModel
-from typing import Optional, Union
 
 app = FastAPI()
 
+# CORS 설정
 app.add_middleware(
     CORSMiddleware,
     allow_origins=["*"],
@@ -19,91 +16,64 @@ app.add_middleware(
     allow_headers=["*"],
 )
 
-# 인증정보 환경변수
-TENANT_ID = "8ff73382-61a3-420a-bc35-1f1969cf48db"
-CLIENT_ID = "d2566ba2-91b2-42ca-a829-c39da8dfba3d"
-CLIENT_SECRET = os.environ.get("CLIENT_SECRET", "")
-EXCEL_FILE_ID = "02CEC702-0806-476E-AA5F-5C8BE1DAA19C"
+# 환경 변수에서 가져오기
+CLIENT_ID = os.environ.get("CLIENT_ID")
+CLIENT_SECRET = os.environ.get("CLIENT_SECRET")
+TENANT_ID = os.environ.get("TENANT_ID")
+
+# OneDrive 파일 정보
+EXCEL_FILE_URL = "https://graph.microsoft.com/v1.0/me/drive/items/02CEC702-0806-476E-AA5F-5C8BE1DAA19C/content"
 SHEET_NAME = "통합관리"
 
-# 요청 body 스키마
-class Parameters(BaseModel):
-    phone_number: Union[str, list]
 
-class QueryResult(BaseModel):
-    parameters: Parameters
-
-class UserRequest(BaseModel):
-    queryResult: Optional[QueryResult]
-
-# Access Token 발급
-async def get_access_token():
+def get_access_token():
     url = f"https://login.microsoftonline.com/{TENANT_ID}/oauth2/v2.0/token"
     headers = {"Content-Type": "application/x-www-form-urlencoded"}
     data = {
         "client_id": CLIENT_ID,
-        "scope": "https://graph.microsoft.com/.default",
         "client_secret": CLIENT_SECRET,
-        "grant_type": "client_credentials"
+        "grant_type": "client_credentials",
+        "scope": "https://graph.microsoft.com/.default"
     }
-    async with aiohttp.ClientSession() as session:
-        async with session.post(url, headers=headers, data=data) as resp:
-            res = await resp.json()
-            return res.get("access_token")
+    response = requests.post(url, headers=headers, data=data)
+    response.raise_for_status()
+    return response.json().get("access_token")
 
-# Excel 데이터 읽기
-async def get_excel_data(token):
-    url = f"https://graph.microsoft.com/v1.0/me/drive/items/{EXCEL_FILE_ID}/workbook/worksheets('{SHEET_NAME}')/usedRange"
-    headers = {"Authorization": f"Bearer {token}"}
-    async with aiohttp.ClientSession() as session:
-        async with session.get(url, headers=headers) as resp:
-            return await resp.json()
 
-# POST 엔드포인트
-@app.post("/get-user-info")
-async def get_user_info(req: UserRequest):
-    phone_input = req.queryResult.parameters.phone_number if req.queryResult else ""
-    if isinstance(phone_input, list):
-        phone_input = phone_input[0]
-    digits = re.sub(r'[^0-9]', '', phone_input)
-    formatted_input = f"{digits[:3]}-{digits[3:7]}-{digits[7:]}" if len(digits) == 11 else phone_input
-
+@app.get("/get-user-info")
+def get_user_info(phone: str = Query(..., description="전화번호, 예: 010-1234-5678")):
     try:
-        token = await get_access_token()
-        data = await get_excel_data(token)
-        values = data.get("values", [])
+        # 토큰 발급
+        token = get_access_token()
 
-        headers = values[0] if values else []
-        rows = values[1:] if len(values) > 1 else []
+        # Excel 파일 다운로드
+        headers = {"Authorization": f"Bearer {token}"}
+        file_response = requests.get(EXCEL_FILE_URL, headers=headers)
+        file_response.raise_for_status()
 
-        result = None
-        for row in rows:
-            tel1 = str(row[9]) if len(row) > 9 else ""
-            tel2 = str(row[10]) if len(row) > 10 else ""
-            returned = row[16] if len(row) > 16 else ""
+        # 엑셀 데이터 읽기
+        df = pd.read_excel(io.BytesIO(file_response.content), sheet_name=SHEET_NAME)
 
-            if formatted_input in [tel1, tel2] and not returned:
-                name = row[8] if len(row) > 8 else ""
-                start = row[13] if len(row) > 13 else ""
-                end = row[14] if len(row) > 14 else ""
+        # 전화번호 양쪽 열에서 찾기 (J열=연락처1, K열=연락처2)
+        df = df.fillna("")  # 결측치 방지
+        match_df = df[(df.iloc[:, 9] == phone) | (df.iloc[:, 10] == phone)]  # J=9, K=10
 
-                result = f"📦 대여자명: {name}\n📅 대여시작일: {start}\n⏳ 대여종료일: {end}"
-                break
+        if len(match_df) == 0:
+            return {"status": "not_found", "message": "해당 번호로 등록된 정보가 없습니다."}
 
-        if not result:
-            result = "고객 정보를 찾을 수 없습니다.\n대여 시 등록한 정확한 전화번호를 입력해 주세요."
+        if len(match_df) > 1:
+            match_df = match_df[match_df.iloc[:, 16] == ""]  # Q열(16번)이 빈 행만
 
-        return JSONResponse(content={"fulfillmentText": result})
+        row = match_df.iloc[0]
+        return {
+            "status": "ok",
+            "name": str(row.iloc[8]).strip(),           # I열: 수취인명
+            "start_date": str(row.iloc[13]).split("T")[0],  # N열: 시작일
+            "end_date": str(row.iloc[14]).split("T")[0],    # O열: 종료일
+        }
 
     except Exception as e:
-        print("❌ 오류:", str(e))
-        return JSONResponse(content={"fulfillmentText": "시스템 오류가 발생했습니다. 잠시 후 다시 시도해 주세요."})
-
-# 로컬 테스트용 (Render에서는 무시됨)
-if __name__ == "__main__":
-    import uvicorn
-    uvicorn.run("main:app", host="127.0.0.1", port=8000, reload=True)
-
+        return {"status": "error", "message": str(e)}
 
 
 
