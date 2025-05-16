@@ -1,4 +1,5 @@
+requests
+pandas
+openpyxl
 fastapi
 uvicorn
-openpyxl
-aiohttp
