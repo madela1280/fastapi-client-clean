@@ -3,6 +3,7 @@ from fastapi.responses import JSONResponse
 from fastapi.middleware.cors import CORSMiddleware
 import aiohttp
 import asyncio
+import os
 import re
 from datetime import datetime
 
@@ -19,8 +20,8 @@ app.add_middleware(
 # 인증정보 설정
 TENANT_ID = "8ff73382-61a3-420a-bc35-1f1969cf48db"
 CLIENT_ID = "d2566ba2-91b2-42ca-a829-c39da8dfba3d"
-CLIENT_SECRET = "~Rc8Q~.orcxCnp3kiitOwXI4sOTDBKxYf8caBaO0"
-EXCEL_FILE_ID = "02CEC702-0806-476E-AA5F-5C8BE1DAA19C"  # 파일 ID
+CLIENT_SECRET = os.environ.get("CLIENT_SECRET", "")  # 환경변수에서 불러옴
+EXCEL_FILE_ID = "02CEC702-0806-476E-AA5F-5C8BE1DAA19C"
 SHEET_NAME = "통합관리"
 
 # Microsoft Graph API 인증 토큰 발급
@@ -83,17 +84,17 @@ async def get_user_info(request: Request):
                 start_str = start if isinstance(start, str) else str(start)
                 end_str = end if isinstance(end, str) else str(end)
 
-                result = f"\ud83d\udce6 \ub300\uc5ec\uc790\uba85: {name}\n\ud83d\udcc5 \ub300\uc5ec\uc2dc\uc791\uc77c: {start_str}\n\u23f3 \ub300\uc5ec\uc885\ub8cc\uc77c: {end_str}"
+                result = f"📦 대여자명: {name}\n📅 대여시작일: {start_str}\n⏳ 대여종료일: {end_str}"
                 break
 
         if not result:
-            result = "\uace0\uac1d \uc815\ubcf4\ub97c \ucc3e\uc744 \uc218 \uc5c6\uc2b5\ub2c8\ub2e4.\\n\ub300\uc5ec \uc2dc \ub4f1\ub85d\ud55c \uc815\ud655\ud55c \uc804\ud654\ubc88\ud638\ub97c \uc785\ub825\ud574 \uc8fc\uc138\uc694."
+            result = "고객 정보를 찾을 수 없습니다.\\n대여 시 등록한 정확한 전화번호를 입력해 주세요."
 
         return JSONResponse(content={"fulfillmentText": result})
 
     except Exception as e:
-        print("\u274c \uc624\ub958:", str(e))
-        return JSONResponse(content={"fulfillmentText": "\uc2dc\uc2a4\ud15c \uc624\ub958\uac00 \ubc1c\uc0dd\ud588\uc2b5\ub2c8\ub2e4. \uc7a0\uc2dc \ud6c4 \ub2e4\uc2dc \uc2dc\ub3c4\ud574 \uc8fc\uc138\uc694."})
+        print("\u274c 오류:", str(e))
+        return JSONResponse(content={"fulfillmentText": "시스템 오류가 발생했습니다. 잠시 후 다시 시도해 주세요."})
 
 if __name__ == "__main__":
     import uvicorn
