@@ -20,7 +20,7 @@ app.add_middleware(
 # 인증정보 설정
 TENANT_ID = "8ff73382-61a3-420a-bc35-1f1969cf48db"
 CLIENT_ID = "d2566ba2-91b2-42ca-a829-c39da8dfba3d"
-CLIENT_SECRET = os.environ.get("CLIENT_SECRET", "")  # 환경변수에서 불러옴
+CLIENT_SECRET = os.environ.get("CLIENT_SECRET", "")
 EXCEL_FILE_ID = "02CEC702-0806-476E-AA5F-5C8BE1DAA19C"
 SHEET_NAME = "통합관리"
 
