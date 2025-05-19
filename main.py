@@ -22,8 +22,7 @@ CLIENT_SECRET = os.environ.get("CLIENT_SECRET")
 TENANT_ID = os.environ.get("TENANT_ID")
 
 # OneDrive 파일 정보
-EXCEL_FILE_URL = "https://graph.microsoft.com/v1.0/me/drive/items/02CEC702-0806-476E-AA5F-5C8BE1DAA19C/content"
-SHEET_NAME = "통합관리"
+EXCEL_FILE_URL = "https://graph.microsoft.com/v1.0/sites/satmoulab.sharepoint.com:/personal/satmoulab_satmoulab_onmicrosoft_com/Documents/종합대여장부_자동화용.xlsx:/content"
 
 
 def get_access_token():
