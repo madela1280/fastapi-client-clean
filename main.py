@@ -81,3 +81,6 @@ def get_user_info(phone: str = Query(..., description="전화번호 예: 010-123
 if __name__ == "__main__":
     import uvicorn
     uvicorn.run("main:app", host="0.0.0.0", port=8080)
+
+# dummy update to force rebuild
+
