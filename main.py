@@ -21,10 +21,13 @@ CLIENT_ID = os.environ.get("CLIENT_ID")
 CLIENT_SECRET = os.environ.get("CLIENT_SECRET")
 TENANT_ID = os.environ.get("TENANT_ID")
 
-# OneDrive 파일 정보
+# 시트 이름 명시
+SHEET_NAME = "통합관리"
+
+# OneDrive Graph URL (Excel 파일 다운로드)
 EXCEL_FILE_URL = "https://graph.microsoft.com/v1.0/drives/b!p-WHaY_YykS0m7CzOb2mbeEAP0f3f0BJm0p7y0O7BBJeN3H5RhRLblmxucDPnDVR/items/02CEC702-0806-476E-AA5F-5C8BE1DAA19C/content"
 
-
+# 엑세스 토큰 요청
 def get_access_token():
     url = f"https://login.microsoftonline.com/{TENANT_ID}/oauth2/v2.0/token"
     headers = {"Content-Type": "application/x-www-form-urlencoded"}
@@ -40,40 +43,40 @@ def get_access_token():
 
 
 @app.get("/get-user-info")
-def get_user_info(phone: str = Query(..., description="전화번호, 예: 010-1234-5678")):
+def get_user_info(phone: str = Query(..., description="전화번호 예: 010-1234-5678")):
     try:
-        # 토큰 발급
         token = get_access_token()
 
-        # Excel 파일 다운로드
         headers = {"Authorization": f"Bearer {token}"}
         file_response = requests.get(EXCEL_FILE_URL, headers=headers)
         file_response.raise_for_status()
 
-        # 엑셀 데이터 읽기
+        # Excel 파일 읽기
         df = pd.read_excel(io.BytesIO(file_response.content), sheet_name=SHEET_NAME)
+        df = df.fillna("")
 
-        # 전화번호 양쪽 열에서 찾기 (J열=연락처1, K열=연락처2)
-        df = df.fillna("")  # 결측치 방지
-        match_df = df[(df.iloc[:, 9] == phone) | (df.iloc[:, 10] == phone)]  # J=9, K=10
+        # J열(9), K열(10)에 전화번호 일치 여부 확인
+        match_df = df[(df.iloc[:, 9] == phone) | (df.iloc[:, 10] == phone)]
 
         if len(match_df) == 0:
             return {"status": "not_found", "message": "해당 번호로 등록된 정보가 없습니다."}
 
+        # 동일 번호 여러 개인 경우 Q열(16)이 비어 있는 행만 필터링
         if len(match_df) > 1:
-            match_df = match_df[match_df.iloc[:, 16] == ""]  # Q열(16번)이 빈 행만
+            match_df = match_df[match_df.iloc[:, 16] == ""]
+
+        if match_df.empty:
+            return {"status": "not_found", "message": "일치하는 정보가 없습니다 (조건 불충족)."}
 
         row = match_df.iloc[0]
         return {
             "status": "ok",
-            "name": str(row.iloc[8]).strip(),           # I열: 수취인명
-            "start_date": str(row.iloc[13]).split("T")[0],  # N열: 시작일
-            "end_date": str(row.iloc[14]).split("T")[0],    # O열: 종료일
+            "name": str(row.iloc[8]).strip(),                   # I열: 수취인명
+            "start_date": str(row.iloc[13]).split("T")[0],     # N열: 시작일
+            "end_date": str(row.iloc[14]).split("T")[0],       # O열: 종료일
         }
 
     except Exception as e:
         return {"status": "error", "message": str(e)}
-
-
 
 
