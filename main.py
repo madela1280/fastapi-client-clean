@@ -25,7 +25,7 @@ TENANT_ID = os.environ.get("TENANT_ID")
 SHEET_NAME = "통합관리"
 
 # OneDrive Graph URL (Excel 파일 다운로드)
-EXCEL_FILE_URL = "https://graph.microsoft.com/v1.0/drives/b!p-WHaY_YykS0m7CzOb2mbeEAP0f3f0BJm0p7y0O7BBJeN3H5RhRLblmxucDPnDVR/items/02CEC702-0806-476E-AA5F-5C8BE1DAA19C/content"
+EXCEL_FILE_URL = "https://graph.microsoft.com/v1.0/sites/satmoulab.sharepoint.com:/sites/rental_data:/drive/items/AB8C3088-F264-49AD-8F8A-3D5723124A39/content"
 
 # 엑세스 토큰 요청
 def get_access_token():
