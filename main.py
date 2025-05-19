@@ -25,7 +25,7 @@ TENANT_ID = os.environ.get("TENANT_ID")
 SHEET_NAME = "통합관리"
 
 # OneDrive Graph URL (Excel 파일 다운로드)
-EXCEL_FILE_URL = "https://graph.microsoft.com/v1.0/drives/b!p-WHaY_YykS0m7CzOb2mbeEAP0f3f0BJm0p7y0O7BBJeN3H5RhRLblmxucDPnDVR/items/02CEC702-0806-476E-AA5F-5C8BE1DAA19C/content"
+EXCEL_FILE_URL = "https://graph.microsoft.com/v1.0/drives/b!-RIj2DuyvEyV1T4NlOaMHk8XkS_I8MdFlUCq1BlcjgmhRfAj3-Z8RY2VpuvV_tpd/items/01BYE5RZZ6FUE5272C5JCY3L7CLZ7XOUYM/content"
 
 # 엑세스 토큰 요청
 def get_access_token():
@@ -40,7 +40,6 @@ def get_access_token():
     response = requests.post(url, headers=headers, data=data)
     response.raise_for_status()
     return response.json().get("access_token")
-
 
 @app.get("/get-user-info")
 def get_user_info(phone: str = Query(..., description="전화번호 예: 010-1234-5678")):
@@ -78,5 +77,6 @@ def get_user_info(phone: str = Query(..., description="전화번호 예: 010-123
 
     except Exception as e:
         return {"status": "error", "message": str(e)}
+
 
 
