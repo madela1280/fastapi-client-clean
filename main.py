@@ -80,8 +80,9 @@ def get_user_info(phone: str = Query(..., description="전화번호 예: 010-123
 
 if __name__ == "__main__":
     import uvicorn
-    import os
-    port = int(os.environ.get("PORT", 10000))  # ← Render 환경에 맞게 자동 포트 사용
+    port = int(os.environ.get("PORT", 10000))  # Render 환경에서 포트 자동 지정
     uvicorn.run("main:app", host="0.0.0.0", port=port)
 
 # rebuild trigger dummy line
+
+
