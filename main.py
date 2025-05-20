@@ -4,6 +4,7 @@ import requests
 import io
 import pandas as pd
 import os
+from datetime import datetime
 
 app = FastAPI()
 
@@ -21,75 +22,89 @@ CLIENT_ID = os.environ.get("CLIENT_ID")
 CLIENT_SECRET = os.environ.get("CLIENT_SECRET")
 TENANT_ID = os.environ.get("TENANT_ID")
 
-# 시트 이름 명시
+# 엑셀 경로 세팅
+SHAREPOINT_SITE_ID = "your_site_id"
+EXCEL_ITEM_ID = "your_excel_file_item_id"
 SHEET_NAME = "통합관리"
 
-# OneDrive Graph URL (Excel 파일 다운로드)
-EXCEL_FILE_URL = "https://graph.microsoft.com/v1.0/drives/b!XbsvEHB55EeGhvbX-sA3X3_yyMojcCdEqW-9d3tCx4HmolOrGKQZQ5AFBiiHgX3t/items/01BRDK2MMIGCGKWZHSVVEY7CR5K4RRESRZ/content"
-
-# 엑세스 토큰 요청
+# 엑세스 토큰 발급
 def get_access_token():
     url = f"https://login.microsoftonline.com/{TENANT_ID}/oauth2/v2.0/token"
     headers = {"Content-Type": "application/x-www-form-urlencoded"}
     data = {
         "client_id": CLIENT_ID,
         "client_secret": CLIENT_SECRET,
+        "scope": "https://graph.microsoft.com/.default",
         "grant_type": "client_credentials",
-        "scope": "https://graph.microsoft.com/.default"
     }
     response = requests.post(url, headers=headers, data=data)
-    response.raise_for_status()
-    return response.json().get("access_token")
+    return response.json()["access_token"]
 
+# 엑셀 파일에서 정보 가져오기
+def get_excel_data(phone: str):
+    token = get_access_token()
+    url = f"https://graph.microsoft.com/v1.0/sites/{SHAREPOINT_SITE_ID}/drive/items/{EXCEL_ITEM_ID}/workbook/worksheets('{SHEET_NAME}')/usedRange"
+    headers = {"Authorization": f"Bearer {token}"}
+    response = requests.get(url, headers=headers)
+    data = response.json()
+
+    values = data.get("values", [])
+    header = values[0]
+    rows = values[1:]
+
+    phone = phone.replace("-", "").strip()
+    contact1_idx = header.index("연락처1")
+    contact2_idx = header.index("연락처2")
+    name_idx = header.index("수취인명")
+    start_idx = header.index("대여시작일")
+    end_idx = header.index("대여종료일")
+    return_idx = header.index("반납일") if "반납일" in header else None
+
+    for row in rows:
+        contact1 = str(row[contact1_idx]).replace("-", "").strip()
+        contact2 = str(row[contact2_idx]).replace("-", "").strip()
+        is_returned = row[return_idx] if return_idx is not None and len(row) > return_idx else None
+
+        if phone == contact1 or phone == contact2:
+            if not is_returned:
+                name = row[name_idx]
+                start = row[start_idx]
+                end = row[end_idx]
+                # 날짜 포맷 정제
+                start_date = parse_excel_date(start)
+                end_date = parse_excel_date(end)
+                return {
+                    "name": name,
+                    "start_date": start_date,
+                    "end_date": end_date,
+                }
+
+    return None
+
+# 날짜 포맷 처리 함수
+def parse_excel_date(value):
+    if isinstance(value, float) or isinstance(value, int):
+        base_date = datetime(1899, 12, 30)
+        return (base_date + pd.to_timedelta(value, unit="D")).strftime("%Y-%m-%d")
+    if isinstance(value, str):
+        try:
+            return datetime.strptime(value[:10], "%Y-%m-%d").strftime("%Y-%m-%d")
+        except:
+            return value
+    return str(value)
+
+# ✅ 루트 경로 응답 추가
+@app.get("/")
+def root():
+    return {"message": "FastAPI app is running on Render!"}
+
+# 📞 /get-user-info?phone=01012345678
 @app.get("/get-user-info")
-def get_user_info(phone: str = Query(..., description="전화번호 예: 010-1234-5678")):
-    try:
-        token = get_access_token()
-
-        headers = {"Authorization": f"Bearer {token}"}
-        file_response = requests.get(EXCEL_FILE_URL, headers=headers)
-        file_response.raise_for_status()
-
-        # Excel 파일 읽기 (필요한 열만 선택)
-        df = pd.read_excel(
-            io.BytesIO(file_response.content),
-            sheet_name=SHEET_NAME,
-            usecols=[8, 9, 10, 13, 14, 16],
-            dtype=str
-        )
-        df = df.fillna("")
-
-        # J열(9), K열(10)에 전화번호 일치 여부 확인
-        match_df = df[(df.iloc[:, 1] == phone) | (df.iloc[:, 2] == phone)]
-
-        if len(match_df) == 0:
-            return {"status": "not_found", "message": "해당 번호로 등록된 정보가 없습니다."}
-
-        # 동일 번호 여러 개인 경우 Q열(16)이 비어 있는 행만 필터링
-        if len(match_df) > 1:
-            match_df = match_df[match_df.iloc[:, 5] == ""]
-
-        if match_df.empty:
-            return {"status": "not_found", "message": "일치하는 정보가 없습니다 (조건 불충족)."}
-
-        row = match_df.iloc[0]
-        return {
-            "status": "ok",
-            "name": str(row.iloc[0]).strip(),                   # I열: 수취인명
-            "start_date": str(row.iloc[3]).split("T")[0],     # N열: 시작일
-            "end_date": str(row.iloc[4]).split("T")[0],       # O열: 종료일
-        }
-
-    except Exception as e:
-        return {"status": "error", "message": str(e)}
-
-if __name__ == "__main__":
-    import uvicorn
-    port = int(os.environ.get("PORT", 10000))  # Render 환경에서 포트 자동 지정
-    uvicorn.run("main:app", host="0.0.0.0", port=port)
-
-# rebuild trigger dummy line
-# rebuild trigger 2
+def get_user_info(phone: str = Query(..., description="전화번호를 '-' 없이 입력")):
+    result = get_excel_data(phone)
+    if result:
+        return result
+    return {"message": "해당 전화번호로 등록된 정보가 없습니다."}
 
 
 
