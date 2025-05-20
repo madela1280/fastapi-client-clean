@@ -50,8 +50,8 @@ def get_user_info(phone: str = Query(..., description="전화번호 예: 010-123
         file_response = requests.get(EXCEL_FILE_URL, headers=headers)
         file_response.raise_for_status()
 
-        # Excel 파일 읽기
-        df = pd.read_excel(io.BytesIO(file_response.content), sheet_name=SHEET_NAME)
+        # Excel 파일 읽기 (모든 데이터를 문자열로 처리)
+        df = pd.read_excel(io.BytesIO(file_response.content), sheet_name=SHEET_NAME, dtype=str)
         df = df.fillna("")
 
         # J열(9), K열(10)에 전화번호 일치 여부 확인
@@ -84,6 +84,6 @@ if __name__ == "__main__":
     uvicorn.run("main:app", host="0.0.0.0", port=port)
 
 # rebuild trigger dummy line
-# rebuild trigger 2
+
 
 
