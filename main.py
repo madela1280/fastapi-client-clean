@@ -50,19 +50,24 @@ def get_user_info(phone: str = Query(..., description="전화번호 예: 010-123
         file_response = requests.get(EXCEL_FILE_URL, headers=headers)
         file_response.raise_for_status()
 
-        # Excel 파일 읽기 (모든 데이터를 문자열로 처리)
-        df = pd.read_excel(io.BytesIO(file_response.content), sheet_name=SHEET_NAME, dtype=str)
+        # Excel 파일 읽기 (필요한 열만 선택)
+        df = pd.read_excel(
+            io.BytesIO(file_response.content),
+            sheet_name=SHEET_NAME,
+            usecols=[8, 9, 10, 13, 14, 16],
+            dtype=str
+        )
         df = df.fillna("")
 
         # J열(9), K열(10)에 전화번호 일치 여부 확인
-        match_df = df[(df.iloc[:, 9] == phone) | (df.iloc[:, 10] == phone)]
+        match_df = df[(df.iloc[:, 1] == phone) | (df.iloc[:, 2] == phone)]
 
         if len(match_df) == 0:
             return {"status": "not_found", "message": "해당 번호로 등록된 정보가 없습니다."}
 
         # 동일 번호 여러 개인 경우 Q열(16)이 비어 있는 행만 필터링
         if len(match_df) > 1:
-            match_df = match_df[match_df.iloc[:, 16] == ""]
+            match_df = match_df[match_df.iloc[:, 5] == ""]
 
         if match_df.empty:
             return {"status": "not_found", "message": "일치하는 정보가 없습니다 (조건 불충족)."}
@@ -70,9 +75,9 @@ def get_user_info(phone: str = Query(..., description="전화번호 예: 010-123
         row = match_df.iloc[0]
         return {
             "status": "ok",
-            "name": str(row.iloc[8]).strip(),                   # I열: 수취인명
-            "start_date": str(row.iloc[13]).split("T")[0],     # N열: 시작일
-            "end_date": str(row.iloc[14]).split("T")[0],       # O열: 종료일
+            "name": str(row.iloc[0]).strip(),                   # I열: 수취인명
+            "start_date": str(row.iloc[3]).split("T")[0],     # N열: 시작일
+            "end_date": str(row.iloc[4]).split("T")[0],       # O열: 종료일
         }
 
     except Exception as e:
@@ -84,6 +89,8 @@ if __name__ == "__main__":
     uvicorn.run("main:app", host="0.0.0.0", port=port)
 
 # rebuild trigger dummy line
+# rebuild trigger 2
+
 
 
 
