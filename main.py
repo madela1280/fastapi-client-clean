@@ -70,17 +70,18 @@ def get_excel_data(phone: str):
         return None
 
     header = values[0]
-    print("📌 현재 Excel 헤더:", header)
     rows = values[1:]
 
     try:
+        print("📌 현재 Excel 헤더:", header)  # ✅ 헤더 출력
+
         phone = normalize_phone(phone)
         contact1_idx = header.index("연락처1")
         contact2_idx = header.index("연락처2")
         name_idx = header.index("수취인명")
         start_idx = header.index("시작일")
         end_idx = header.index("종료일")
-        model_idx = header.index("제품명")  # ✅ 제품명 열로 변경
+        model_idx = header.index("제품명")  # ✅ "제품명" 열로 변경
         return_idx = header.index("반납완료일") if "반납완료일" in header else None
     except ValueError as e:
         print("❌ 열 이름이 일치하지 않음:", e)
