@@ -25,7 +25,7 @@ TENANT_ID = os.environ.get("TENANT_ID")
 SHAREPOINT_SITE_ID = "satmoulab.sharepoint.com,102fbb5d-7970-47e4-8686-f6d7fac0375f,cac8f27f-7023-4427-a96f-bd777b42c781"
 EXCEL_ITEM_ID = "01BRDK2MMIGCGKWZHSVVEY7CR5K4RRESRZ"
 SHEET_NAME = "통합관리"
-RANGE_ADDRESS = "I1:Q500"  # 수취인명(I) ~ 반납완료일(Q)
+RANGE_ADDRESS = "H1:Q30000"  # 최대 3만 행까지 커버
 
 # 전화번호 정규화
 def normalize_phone(p):
@@ -73,21 +73,20 @@ def get_excel_data(phone: str):
     rows = values[1:]
 
     try:
-        print("📌 현재 Excel 헤더:", header)  # ✅ 헤더 출력
-
         phone = normalize_phone(phone)
         contact1_idx = header.index("연락처1")
         contact2_idx = header.index("연락처2")
         name_idx = header.index("수취인명")
         start_idx = header.index("시작일")
         end_idx = header.index("종료일")
-        model_idx = header.index("제품명")  # ✅ "제품명" 열로 변경
+        model_idx = header.index("제품명")  # 🔄 H열 기준으로 변경됨
         return_idx = header.index("반납완료일") if "반납완료일" in header else None
     except ValueError as e:
         print("❌ 열 이름이 일치하지 않음:", e)
         return None
 
-    for row in rows:
+    # 아래에서부터 검색하여 최신 행 선택
+    for row in reversed(rows):
         contact1 = normalize_phone(row[contact1_idx]) if contact1_idx < len(row) else ""
         contact2 = normalize_phone(row[contact2_idx]) if contact2_idx < len(row) else ""
         is_returned = row[return_idx] if return_idx is not None and len(row) > return_idx else None
@@ -102,7 +101,7 @@ def get_excel_data(phone: str):
                     "대여자명": name,
                     "대여시작일": parse_excel_date(start),
                     "대여종료일": parse_excel_date(end),
-                    "기종": model
+                    "제품명": model
                 }
     return None
 
