@@ -70,6 +70,7 @@ def get_excel_data(phone: str):
         return None
 
     header = values[0]
+    print("📌 현재 Excel 헤더:", header)
     rows = values[1:]
 
     try:
