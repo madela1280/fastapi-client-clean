@@ -1,4 +1,5 @@
-fastapi 
-uvicorn 
-openpyxl 
+fastapi
+uvicorn
+openpyxl
 aiohttp
+requests   ← 추가
