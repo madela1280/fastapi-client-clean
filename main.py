@@ -76,7 +76,7 @@ def get_excel_data(phone: str):
         phone = normalize_phone(phone)
         contact1_idx = header.index("연락처1")
         contact2_idx = header.index("연락처2")
-        name_idx = header.index("수치인명")
+        name_idx = header.index("수취인명")
         start_idx = header.index("시작일")
         end_idx = header.index("종료일")
         model_idx = header.index("기종")  # ✅ 기종 여보가요
