@@ -66,7 +66,7 @@ def get_excel_data(phone: str):
 
     values = data.get("values")
     if not values:
-        print("❌ Excel 범위에서 값을 가지오지 못했습니다.")
+        print("❌ Excel 범위에서 값을 가져오지 못했습니다.")
         return None
 
     header = values[0]
@@ -79,10 +79,10 @@ def get_excel_data(phone: str):
         name_idx = header.index("수취인명")
         start_idx = header.index("시작일")
         end_idx = header.index("종료일")
-        model_idx = header.index("기종")  # ✅ 기종 여보가요
+        model_idx = header.index("제품명")  # ✅ 제품명 열로 변경
         return_idx = header.index("반납완료일") if "반납완료일" in header else None
     except ValueError as e:
-        print("❌ 여보 이름이 일치하지 않음:", e)
+        print("❌ 열 이름이 일치하지 않음:", e)
         return None
 
     for row in rows:
@@ -116,6 +116,3 @@ def get_user_info(phone: str = Query(..., description="전화번호('-' 없이) 
     if result:
         return result
     return {"message": "해당 전화번호로 등록된 정보가 없습니다."}
-
-# TEMP: 재배포를 위한 강제 수정
-
