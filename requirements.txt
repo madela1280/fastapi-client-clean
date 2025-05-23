@@ -2,4 +2,4 @@ fastapi
 uvicorn
 openpyxl
 aiohttp
-requests   ← 추가
+requests
