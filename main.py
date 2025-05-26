@@ -117,3 +117,12 @@ def get_user_info(phone: str = Query(..., description="전화번호('-' 없이) 
     if result:
         return result
     return {"message": "해당 전화번호로 등록된 정보가 없습니다."}
+
+
+from fastapi import Body
+
+@app.post("/deposit-webhook")
+async def handle_sms(data: dict = Body(...)):
+    print("✅ 입금 문자 수신됨:")
+    print(data)
+    return {"status": "received"}
