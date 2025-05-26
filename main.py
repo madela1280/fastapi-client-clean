@@ -132,3 +132,8 @@ async def handle_sms(data: dict = Body(...)):
 def get_deposit_logs():
     return deposit_logs
 
+# Render 배포용 실행 설정
+if __name__ == "__main__":
+    import uvicorn
+    port = int(os.environ.get("PORT", 8000))
+    uvicorn.run("main:app", host="0.0.0.0", port=port, reload=False)
