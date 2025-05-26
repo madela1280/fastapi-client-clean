@@ -79,20 +79,19 @@ def get_excel_data(phone: str):
         name_idx = header.index("수취인명")
         start_idx = header.index("시작일")
         end_idx = header.index("종료일")
-        model_idx = header.index("제품명")  # 🔄 H열 기준으로 변경됨
+        model_idx = header.index("제품명")
         return_idx = header.index("반납완료일") if "반납완료일" in header else None
     except ValueError as e:
         print("❌ 열 이름이 일치하지 않음:", e)
         return None
 
-    # 아래에서부터 검색하여 최신 행 선택
     for row in reversed(rows):
         contact1 = normalize_phone(row[contact1_idx]) if contact1_idx < len(row) else ""
         contact2 = normalize_phone(row[contact2_idx]) if contact2_idx < len(row) else ""
         is_returned = row[return_idx] if return_idx is not None and len(row) > return_idx else None
 
         if phone == contact1 or phone == contact2:
-            if not is_returned or str(is_returned).strip() == "":
+            if not is_returned:
                 name = row[name_idx]
                 start = row[start_idx]
                 end = row[end_idx]
@@ -103,22 +102,22 @@ def get_excel_data(phone: str):
                     "대여종료일": parse_excel_date(end),
                     "제품명": model
                 }
-    return None
+    return {
+        "대여자명": None,
+        "대여시작일": None,
+        "대여종료일": None,
+        "제품명": None
+    }
 
-# 루트 확인
 @app.get("/")
 def root():
     return {"message": "FastAPI Excel 연결 OK"}
 
-# 고객 조회 API
 @app.get("/get-user-info")
 def get_user_info(phone: str = Query(..., description="전화번호('-' 없이) 입력")):
-    result = get_excel_data(phone)
-    if result:
-        return result
-    return {"message": "해당 전화번호로 등록된 정보가 없습니다."}
+    return get_excel_data(phone)
 
-# 입금 문자 저장용 리스트
+# 입금 기록 저장용
 deposit_logs = []
 
 @app.post("/deposit-webhook")
@@ -132,7 +131,6 @@ async def handle_sms(data: dict = Body(...)):
 def get_deposit_logs():
     return deposit_logs
 
-# Render 배포용 실행 설정
 if __name__ == "__main__":
     import uvicorn
     port = int(os.environ.get("PORT", 8000))
