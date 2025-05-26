@@ -1,4 +1,4 @@
-from fastapi import FastAPI, Query, Body
+from fastapi import FastAPI, Query, Body, Request
 from fastapi.middleware.cors import CORSMiddleware
 import requests
 import pandas as pd
@@ -121,10 +121,19 @@ def get_user_info(phone: str = Query(..., description="전화번호('-' 없이) 
 deposit_logs = []
 
 @app.post("/deposit-webhook")
-async def handle_sms(data: dict = Body(...)):
-    print("✅ 입금 문자 수신됨:")
-    print(data)
-    deposit_logs.append(data)
+async def handle_sms(request: Request):
+    content_type = request.headers.get("content-type", "")
+    
+    if "application/json" in content_type:
+        body = await request.json()
+    elif "application/x-www-form-urlencoded" in content_type:
+        form = await request.form()
+        body = dict(form)
+    else:
+        return {"error": "Unsupported content-type"}
+
+    print("✅ 입금 문자 수신됨:", body)
+    deposit_logs.append(body)
     return {"status": "received"}
 
 @app.get("/deposit-log")
