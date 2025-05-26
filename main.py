@@ -1,4 +1,4 @@
-from fastapi import FastAPI, Query
+from fastapi import FastAPI, Query, Body
 from fastapi.middleware.cors import CORSMiddleware
 import requests
 import pandas as pd
@@ -118,11 +118,17 @@ def get_user_info(phone: str = Query(..., description="전화번호('-' 없이) 
         return result
     return {"message": "해당 전화번호로 등록된 정보가 없습니다."}
 
-
-from fastapi import Body
+# 입금 문자 저장용 리스트
+deposit_logs = []
 
 @app.post("/deposit-webhook")
 async def handle_sms(data: dict = Body(...)):
     print("✅ 입금 문자 수신됨:")
     print(data)
+    deposit_logs.append(data)
     return {"status": "received"}
+
+@app.get("/deposit-log")
+def get_deposit_logs():
+    return deposit_logs
+
