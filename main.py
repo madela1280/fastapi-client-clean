@@ -92,7 +92,7 @@ def get_excel_data(phone: str):
         is_returned = row[return_idx] if return_idx is not None and len(row) > return_idx else None
 
         if phone == contact1 or phone == contact2:
-            if not is_returned:
+            if not is_returned or str(is_returned).strip() == "":
                 name = row[name_idx]
                 start = row[start_idx]
                 end = row[end_idx]
