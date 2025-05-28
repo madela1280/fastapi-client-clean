@@ -4,6 +4,7 @@ import httpx
 import pandas as pd
 from datetime import datetime
 import os
+from time import time
 
 app = FastAPI()
 
@@ -25,9 +26,15 @@ EXCEL_ITEM_ID = "01BRDK2MMIGCGKWZHSVVEY7CR5K4RRESRZ"
 SHEET_NAME = "통합관리"
 RANGE_ADDRESS = "H1:Q30000"
 
+# 캐시 구조 (60초 유지)
+_excel_cache = {"data": None, "last_fetched": 0}
+CACHE_DURATION = 60
+
+# 전화번호 정규화
 def normalize_phone(p):
     return str(p).replace("-", "").replace(" ", "").strip()
 
+# 엑셀 날짜 파싱
 def parse_excel_date(value):
     if isinstance(value, (float, int)):
         base_date = datetime(1899, 12, 30)
@@ -39,6 +46,7 @@ def parse_excel_date(value):
             return value
     return str(value)
 
+# 액세스 토큰 캐시
 access_token_cache = {"token": None, "expires_at": 0}
 
 async def get_access_token():
@@ -53,6 +61,7 @@ async def get_access_token():
         "scope": "https://graph.microsoft.com/.default",
         "grant_type": "client_credentials",
     }
+
     async with httpx.AsyncClient() as client:
         res = await client.post(url, data=data, headers=headers)
         res.raise_for_status()
@@ -61,25 +70,26 @@ async def get_access_token():
         access_token_cache["expires_at"] = datetime.now().timestamp() + 3400
         return token
 
+# 핵심 로직: 캐시 포함된 엑셀 조회
 async def get_excel_data(phone: str):
-    token = await get_access_token()
-    url = f"https://graph.microsoft.com/v1.0/sites/{SHAREPOINT_SITE_ID}/drive/items/{EXCEL_ITEM_ID}/workbook/worksheets('{SHEET_NAME}')/range(address='{RANGE_ADDRESS}')"
-    headers = {"Authorization": f"Bearer {token}"}
+    now = time()
 
-    async with httpx.AsyncClient(timeout=20.0) as client:
-        res = await client.get(url, headers=headers)
-        res.raise_for_status()
-        values = res.json().get("values", [])
+    # 60초 이내 캐시 사용
+    if _excel_cache["data"] and now - _excel_cache["last_fetched"] < CACHE_DURATION:
+        values = _excel_cache["data"]
+    else:
+        token = await get_access_token()
+        url = f"https://graph.microsoft.com/v1.0/sites/{SHAREPOINT_SITE_ID}/drive/items/{EXCEL_ITEM_ID}/workbook/worksheets('{SHEET_NAME}')/range(address='{RANGE_ADDRESS}')"
+        headers = {"Authorization": f"Bearer {token}"}
+        async with httpx.AsyncClient(timeout=20.0) as client:
+            res = await client.get(url, headers=headers)
+            res.raise_for_status()
+            values = res.json().get("values")
+        _excel_cache["data"] = values
+        _excel_cache["last_fetched"] = now
 
     if not values:
-        print("📛 values가 비어 있습니다. 엑셀 응답 확인 필요")
-        return {
-            "대여자명": None,
-            "대여시작일": None,
-            "대여종료일": None,
-            "제품명": None,
-            "에러": "엑셀 데이터를 불러오지 못했습니다."
-        }
+        return None
 
     header = values[0]
     rows = values[1:]
@@ -117,15 +127,16 @@ async def get_excel_data(phone: str):
         "제품명": None
     }
 
+# 루트 확인용
 @app.get("/")
 def root():
     return {"message": "FastAPI Excel 연결 OK"}
 
+# 고객 조회 엔드포인트
 @app.get("/get-user-info")
 async def get_user_info(phone: str = Query(...)):
     return await get_excel_data(phone)
 
-# trigger deploy to apply Starter plan
 
 
 
