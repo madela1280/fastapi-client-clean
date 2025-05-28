@@ -1,4 +1,4 @@
-from fastapi import FastAPI, Query, Body, Request
+from fastapi import FastAPI, Query, Request
 from fastapi.middleware.cors import CORSMiddleware
 import requests
 import pandas as pd
@@ -7,21 +7,18 @@ from datetime import datetime
 
 app = FastAPI()
 
-# CORS 설정
 app.add_middleware(
     CORSMiddleware,
-    allow_origins=["*"],
+    allow_origins=["https://genuine-treacle-599cab.netlify.app"],
     allow_credentials=True,
     allow_methods=["*"],
     allow_headers=["*"],
 )
 
-# 환경 변수에서 가져오기
 CLIENT_ID = os.environ.get("CLIENT_ID")
 CLIENT_SECRET = os.environ.get("CLIENT_SECRET")
 TENANT_ID = os.environ.get("TENANT_ID")
 
-# SharePoint 및 Excel 정보
 SHAREPOINT_SITE_ID = "satmoulab.sharepoint.com,102fbb5d-7970-47e4-8686-f6d7fac0375f,cac8f27f-7023-4427-a96f-bd777b42c781"
 EXCEL_ITEM_ID = "01BRDK2MMIGCGKWZHSVVEY7CR5K4RRESRZ"
 SHEET_NAME = "통합관리"
@@ -31,7 +28,7 @@ def normalize_phone(p):
     return str(p).replace("-", "").replace(" ", "").strip()
 
 def parse_excel_date(value):
-    if isinstance(value, float) or isinstance(value, int):
+    if isinstance(value, (float, int)):
         base_date = datetime(1899, 12, 30)
         return (base_date + pd.to_timedelta(value, unit="D")).strftime("%Y-%m-%d")
     if isinstance(value, str):
@@ -112,7 +109,7 @@ def root():
 def get_user_info(phone: str = Query(..., description="전화번호('-' 없이) 입력")):
     return get_excel_data(phone)
 
-# 입금 기록 저장용
+# Optional - 입금 관련 로그 기능 유지
 deposit_logs = []
 
 @app.post("/deposit-webhook")
@@ -125,8 +122,6 @@ async def handle_sms(request: Request):
         body = dict(form)
     else:
         return {"error": "Unsupported content-type"}
-
-    print("✅ 입금 문자 수신됨:", body)
     deposit_logs.append(body)
     return {"status": "received"}
 
@@ -138,6 +133,7 @@ if __name__ == "__main__":
     import uvicorn
     port = int(os.environ.get("PORT", 8000))
     uvicorn.run("main:app", host="0.0.0.0", port=port, reload=False)
+
 
 
 
