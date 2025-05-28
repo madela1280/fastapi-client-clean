@@ -1,17 +1,16 @@
-from fastapi import FastAPI, Query, Request
+from fastapi import FastAPI, Query
 from fastapi.middleware.cors import CORSMiddleware
 import httpx
 import pandas as pd
 from datetime import datetime
 import os
-import asyncio
 
 app = FastAPI()
 
 # CORS 설정
 app.add_middleware(
     CORSMiddleware,
-    allow_origins=["*"],  # 실제 서비스 시 origin 제한 권장
+    allow_origins=["*"],
     allow_credentials=True,
     allow_methods=["*"],
     allow_headers=["*"],
@@ -43,7 +42,6 @@ def parse_excel_date(value):
 access_token_cache = {"token": None, "expires_at": 0}
 
 async def get_access_token():
-    # 캐시된 토큰 재사용
     if access_token_cache["token"] and access_token_cache["expires_at"] > datetime.now().timestamp():
         return access_token_cache["token"]
 
@@ -60,7 +58,7 @@ async def get_access_token():
         res.raise_for_status()
         token = res.json()["access_token"]
         access_token_cache["token"] = token
-        access_token_cache["expires_at"] = datetime.now().timestamp() + 3400  # 약 56분
+        access_token_cache["expires_at"] = datetime.now().timestamp() + 3400
         return token
 
 async def get_excel_data(phone: str):
@@ -71,10 +69,17 @@ async def get_excel_data(phone: str):
     async with httpx.AsyncClient(timeout=30.0) as client:
         res = await client.get(url, headers=headers)
         res.raise_for_status()
-        values = res.json().get("values")
+        values = res.json().get("values", [])
 
     if not values:
-        return None
+        print("📛 values가 비어 있습니다. 엑셀 응답 확인 필요")
+        return {
+            "대여자명": None,
+            "대여시작일": None,
+            "대여종료일": None,
+            "제품명": None,
+            "에러": "엑셀 데이터를 불러오지 못했습니다."
+        }
 
     header = values[0]
     rows = values[1:]
@@ -119,6 +124,7 @@ def root():
 @app.get("/get-user-info")
 async def get_user_info(phone: str = Query(...)):
     return await get_excel_data(phone)
+
 
 
 
