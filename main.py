@@ -66,7 +66,7 @@ async def get_excel_data(phone: str):
     url = f"https://graph.microsoft.com/v1.0/sites/{SHAREPOINT_SITE_ID}/drive/items/{EXCEL_ITEM_ID}/workbook/worksheets('{SHEET_NAME}')/range(address='{RANGE_ADDRESS}')"
     headers = {"Authorization": f"Bearer {token}"}
 
-    async with httpx.AsyncClient(timeout=30.0) as client:
+    async with httpx.AsyncClient(timeout=10.0) as client:
         res = await client.get(url, headers=headers)
         res.raise_for_status()
         values = res.json().get("values", [])
