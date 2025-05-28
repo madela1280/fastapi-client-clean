@@ -135,7 +135,7 @@ def root():
 async def get_user_info(phone: str = Query(...)):
     return await get_excel_data(phone)
 
-# ✅ 입금 문자 Webhook (누락되었던 부분 복구)
+# 입금 문자 Webhook (챗봇용 응답 포맷 적용)
 @app.post("/deposit-webhook")
 async def handle_sms_webhook(request: Request):
     body = await request.body()
@@ -143,9 +143,28 @@ async def handle_sms_webhook(request: Request):
     today = datetime.now().strftime("%m/%d")
 
     if today not in content:
-        return {"message": "오늘 날짜 문자 아님"}
+        return {
+            "version": "2.0",
+            "template": {
+                "outputs": [
+                    {"simpleText": {"text": "오늘 날짜 문자 아님"}}
+                ]
+            }
+        }
 
-    return {"message": "입금 문자 수신됨", "본문": content}
+    return {
+        "version": "2.0",
+        "template": {
+            "outputs": [
+                {
+                    "simpleText": {
+                        "text": f"입금 문자 수신됨:\n{content}"
+                    }
+                }
+            ]
+        }
+    }
+
 
 
 
