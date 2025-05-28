@@ -125,6 +125,7 @@ def root():
 async def get_user_info(phone: str = Query(...)):
     return await get_excel_data(phone)
 
+# trigger deploy to apply Starter plan
 
 
 
