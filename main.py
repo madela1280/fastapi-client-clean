@@ -1,22 +1,24 @@
-from fastapi import FastAPI, Query, Body, Request
+from fastapi import FastAPI, Query, Request
 from fastapi.middleware.cors import CORSMiddleware
 import requests
 import pandas as pd
 import os
-from datetime import datetime
+from datetime import datetime, timedelta
+import threading
+import time
 
 app = FastAPI()
 
-# ✅ CORS 정확히 명시
+# CORS 설정
 app.add_middleware(
     CORSMiddleware,
-    allow_origins=["https://genuine-treacle-599cab.netlify.app"],
+    allow_origins=["*"],
     allow_credentials=True,
     allow_methods=["*"],
     allow_headers=["*"],
 )
 
-# 환경 변수에서 가져오기
+# 환경 변수
 CLIENT_ID = os.environ.get("CLIENT_ID")
 CLIENT_SECRET = os.environ.get("CLIENT_SECRET")
 TENANT_ID = os.environ.get("TENANT_ID")
@@ -26,6 +28,15 @@ EXCEL_ITEM_ID = "01BRDK2MMIGCGKWZHSVVEY7CR5K4RRESRZ"
 SHEET_NAME = "통합관리"
 RANGE_ADDRESS = "H1:Q30000"
 
+# 전역 캐시
+cached_data = {
+    "timestamp": None,
+    "rows": [],
+    "header": []
+}
+CACHE_TTL = 60  # 60초 주기
+
+# 보조 함수들
 def normalize_phone(p):
     return str(p).replace("-", "").replace(" ", "").strip()
 
@@ -49,25 +60,49 @@ def get_access_token():
         "scope": "https://graph.microsoft.com/.default",
         "grant_type": "client_credentials",
     }
-    response = requests.post(url, headers=headers, data=data)
-    return response.json()["access_token"]
+    res = requests.post(url, headers=headers, data=data)
+    return res.json().get("access_token")
 
-def get_excel_data(phone: str):
+def refresh_excel_cache():
+    global cached_data
+    print("🔄 Excel 캐시 갱신 시도 중...")
     token = get_access_token()
+    if not token:
+        print("❌ 토큰 발급 실패")
+        return
     url = f"https://graph.microsoft.com/v1.0/sites/{SHAREPOINT_SITE_ID}/drive/items/{EXCEL_ITEM_ID}/workbook/worksheets('{SHEET_NAME}')/range(address='{RANGE_ADDRESS}')"
     headers = {"Authorization": f"Bearer {token}"}
-    response = requests.get(url, headers=headers)
-    data = response.json()
+    res = requests.get(url, headers=headers)
+    json_data = res.json()
+    if "values" not in json_data:
+        print("❌ Excel 범위 오류:", json_data)
+        return
+    values = json_data["values"]
+    cached_data["timestamp"] = datetime.utcnow()
+    cached_data["header"] = values[0]
+    cached_data["rows"] = values[1:]
+    print(f"✅ 캐시 갱신 완료. 총 {len(cached_data['rows'])}행")
 
-    values = data.get("values")
-    if not values:
-        return None
+def cache_worker():
+    while True:
+        refresh_excel_cache()
+        time.sleep(CACHE_TTL)
 
-    header = values[0]
-    rows = values[1:]
+# 캐시 시작
+threading.Thread(target=cache_worker, daemon=True).start()
 
+# API 엔드포인트
+@app.get("/")
+def root():
+    return {"message": "FastAPI Excel 연결 OK (캐싱 포함)"}
+
+@app.get("/get-user-info")
+def get_user_info(phone: str = Query(...)):
+    phone = normalize_phone(phone)
+    header = cached_data["header"]
+    rows = cached_data["rows"]
+    
     try:
-        phone = normalize_phone(phone)
         contact1_idx = header.index("연락처1")
         contact2_idx = header.index("연락처2")
         name_idx = header.index("수취인명")
@@ -76,24 +111,19 @@ def get_excel_data(phone: str):
         model_idx = header.index("제품명")
         return_idx = header.index("반납완료일") if "반납완료일" in header else None
     except ValueError as e:
-        return None
+        return {"error": f"열 이름 오류: {e}"}
 
     for row in reversed(rows):
         contact1 = normalize_phone(row[contact1_idx]) if contact1_idx < len(row) else ""
         contact2 = normalize_phone(row[contact2_idx]) if contact2_idx < len(row) else ""
         is_returned = row[return_idx] if return_idx is not None and len(row) > return_idx else None
-
         if phone == contact1 or phone == contact2:
             if not is_returned:
-                name = row[name_idx]
-                start = row[start_idx]
-                end = row[end_idx]
-                model = row[model_idx] if model_idx < len(row) else ""
                 return {
-                    "대여자명": name,
-                    "대여시작일": parse_excel_date(start),
-                    "대여종료일": parse_excel_date(end),
-                    "제품명": model
+                    "대여자명": row[name_idx],
+                    "대여시작일": parse_excel_date(row[start_idx]),
+                    "대여종료일": parse_excel_date(row[end_idx]),
+                    "제품명": row[model_idx] if model_idx < len(row) else ""
                 }
     return {
         "대여자명": None,
@@ -102,37 +132,4 @@ def get_excel_data(phone: str):
         "제품명": None
     }
 
-@app.get("/")
-def root():
-    return {"message": "FastAPI Excel 연결 OK"}
-
-@app.get("/get-user-info")
-def get_user_info(phone: str = Query(..., description="전화번호('-' 없이) 입력")):
-    return get_excel_data(phone)
-
-deposit_logs = []
-
-@app.post("/deposit-webhook")
-async def handle_sms(request: Request):
-    content_type = request.headers.get("content-type", "")
-    
-    if "application/json" in content_type:
-        body = await request.json()
-    elif "application/x-www-form-urlencoded" in content_type:
-        form = await request.form()
-        body = dict(form)
-    else:
-        return {"error": "Unsupported content-type"}
-
-    deposit_logs.append(body)
-    return {"status": "received"}
-
-@app.get("/deposit-log")
-def get_deposit_logs():
-    return deposit_logs
-
-if __name__ == "__main__":
-    import uvicorn
-    port = int(os.environ.get("PORT", 8000))
-    uvicorn.run("main:app", host="0.0.0.0", port=port, reload=False)
 
