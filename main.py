@@ -1,4 +1,4 @@
-from fastapi import FastAPI, Query
+from fastapi import FastAPI, Query, Request
 from fastapi.middleware.cors import CORSMiddleware
 import httpx
 import pandas as pd
@@ -73,8 +73,6 @@ async def get_access_token():
 # 핵심 로직: 캐시 포함된 엑셀 조회
 async def get_excel_data(phone: str):
     now = time()
-
-    # 60초 이내 캐시 사용
     if _excel_cache["data"] and now - _excel_cache["last_fetched"] < CACHE_DURATION:
         values = _excel_cache["data"]
     else:
@@ -136,6 +134,18 @@ def root():
 @app.get("/get-user-info")
 async def get_user_info(phone: str = Query(...)):
     return await get_excel_data(phone)
+
+# ✅ 입금 문자 Webhook (누락되었던 부분 복구)
+@app.post("/deposit-webhook")
+async def handle_sms_webhook(request: Request):
+    body = await request.body()
+    content = body.decode("utf-8")
+    today = datetime.now().strftime("%m/%d")
+
+    if today not in content:
+        return {"message": "오늘 날짜 문자 아님"}
+
+    return {"message": "입금 문자 수신됨", "본문": content}
 
 
 
