@@ -1,40 +1,34 @@
-from fastapi import FastAPI, Query, Request
+from fastapi import FastAPI, Query, Body, Request
 from fastapi.middleware.cors import CORSMiddleware
-import httpx
+import requests
 import pandas as pd
-from datetime import datetime
 import os
-from time import time
+from datetime import datetime
 
 app = FastAPI()
 
-# CORS 설정
+# ✅ CORS 정확히 명시
 app.add_middleware(
     CORSMiddleware,
-    allow_origins=["*"],
+    allow_origins=["https://genuine-treacle-599cab.netlify.app"],
     allow_credentials=True,
     allow_methods=["*"],
     allow_headers=["*"],
 )
 
-# 환경 변수
+# 환경 변수에서 가져오기
 CLIENT_ID = os.environ.get("CLIENT_ID")
 CLIENT_SECRET = os.environ.get("CLIENT_SECRET")
 TENANT_ID = os.environ.get("TENANT_ID")
+
 SHAREPOINT_SITE_ID = "satmoulab.sharepoint.com,102fbb5d-7970-47e4-8686-f6d7fac0375f,cac8f27f-7023-4427-a96f-bd777b42c781"
 EXCEL_ITEM_ID = "01BRDK2MMIGCGKWZHSVVEY7CR5K4RRESRZ"
 SHEET_NAME = "통합관리"
 RANGE_ADDRESS = "H1:Q30000"
 
-# 캐시 구조 (60초 유지)
-_excel_cache = {"data": None, "last_fetched": 0}
-CACHE_DURATION = 60
-
-# 전화번호 정규화
 def normalize_phone(p):
     return str(p).replace("-", "").replace(" ", "").strip()
 
-# 엑셀 날짜 파싱
 def parse_excel_date(value):
     if isinstance(value, (float, int)):
         base_date = datetime(1899, 12, 30)
@@ -46,13 +40,7 @@ def parse_excel_date(value):
             return value
     return str(value)
 
-# 액세스 토큰 캐시
-access_token_cache = {"token": None, "expires_at": 0}
-
-async def get_access_token():
-    if access_token_cache["token"] and access_token_cache["expires_at"] > datetime.now().timestamp():
-        return access_token_cache["token"]
-
+def get_access_token():
     url = f"https://login.microsoftonline.com/{TENANT_ID}/oauth2/v2.0/token"
     headers = {"Content-Type": "application/x-www-form-urlencoded"}
     data = {
@@ -61,31 +49,17 @@ async def get_access_token():
         "scope": "https://graph.microsoft.com/.default",
         "grant_type": "client_credentials",
     }
+    response = requests.post(url, headers=headers, data=data)
+    return response.json()["access_token"]
 
-    async with httpx.AsyncClient() as client:
-        res = await client.post(url, data=data, headers=headers)
-        res.raise_for_status()
-        token = res.json()["access_token"]
-        access_token_cache["token"] = token
-        access_token_cache["expires_at"] = datetime.now().timestamp() + 3400
-        return token
+def get_excel_data(phone: str):
+    token = get_access_token()
+    url = f"https://graph.microsoft.com/v1.0/sites/{SHAREPOINT_SITE_ID}/drive/items/{EXCEL_ITEM_ID}/workbook/worksheets('{SHEET_NAME}')/range(address='{RANGE_ADDRESS}')"
+    headers = {"Authorization": f"Bearer {token}"}
+    response = requests.get(url, headers=headers)
+    data = response.json()
 
-# 핵심 로직: 캐시 포함된 엑셀 조회
-async def get_excel_data(phone: str):
-    now = time()
-    if _excel_cache["data"] and now - _excel_cache["last_fetched"] < CACHE_DURATION:
-        values = _excel_cache["data"]
-    else:
-        token = await get_access_token()
-        url = f"https://graph.microsoft.com/v1.0/sites/{SHAREPOINT_SITE_ID}/drive/items/{EXCEL_ITEM_ID}/workbook/worksheets('{SHEET_NAME}')/range(address='{RANGE_ADDRESS}')"
-        headers = {"Authorization": f"Bearer {token}"}
-        async with httpx.AsyncClient(timeout=20.0) as client:
-            res = await client.get(url, headers=headers)
-            res.raise_for_status()
-            values = res.json().get("values")
-        _excel_cache["data"] = values
-        _excel_cache["last_fetched"] = now
-
+    values = data.get("values")
     if not values:
         return None
 
@@ -94,14 +68,14 @@ async def get_excel_data(phone: str):
 
     try:
         phone = normalize_phone(phone)
-        contact1_idx = header.index("연락처1")
-        contact2_idx = header.index("연락처2")
-        name_idx = header.index("수취인명")
+        contact1_idx = header.index("연러체1")
+        contact2_idx = header.index("연러체2")
+        name_idx = header.index("수체인명")
         start_idx = header.index("시작일")
         end_idx = header.index("종료일")
         model_idx = header.index("제품명")
         return_idx = header.index("반납완료일") if "반납완료일" in header else None
-    except ValueError:
+    except ValueError as e:
         return None
 
     for row in reversed(rows):
@@ -111,13 +85,16 @@ async def get_excel_data(phone: str):
 
         if phone == contact1 or phone == contact2:
             if not is_returned:
+                name = row[name_idx]
+                start = row[start_idx]
+                end = row[end_idx]
+                model = row[model_idx] if model_idx < len(row) else ""
                 return {
-                    "대여자명": row[name_idx],
-                    "대여시작일": parse_excel_date(row[start_idx]),
-                    "대여종료일": parse_excel_date(row[end_idx]),
-                    "제품명": row[model_idx] if model_idx < len(row) else ""
+                    "대여자명": name,
+                    "대여시작일": parse_excel_date(start),
+                    "대여종료일": parse_excel_date(end),
+                    "제품명": model
                 }
-
     return {
         "대여자명": None,
         "대여시작일": None,
@@ -125,45 +102,39 @@ async def get_excel_data(phone: str):
         "제품명": None
     }
 
-# 루트 확인용
 @app.get("/")
 def root():
     return {"message": "FastAPI Excel 연결 OK"}
 
-# 고객 조회 엔드포인트
 @app.get("/get-user-info")
-async def get_user_info(phone: str = Query(...)):
-    return await get_excel_data(phone)
+def get_user_info(phone: str = Query(..., description="전화번호('-' 없이) 입력")):
+    return get_excel_data(phone)
 
-# 입금 문자 Webhook (챗봇용 응답 포맷 적용)
+deposit_logs = []
+
 @app.post("/deposit-webhook")
-async def handle_sms_webhook(request: Request):
-    body = await request.body()
-    content = body.decode("utf-8")
-    today = datetime.now().strftime("%m/%d")
+async def handle_sms(request: Request):
+    content_type = request.headers.get("content-type", "")
 
-    if today not in content:
-        return {
-            "version": "2.0",
-            "template": {
-                "outputs": [
-                    {"simpleText": {"text": "오늘 날짜 문자 아님"}}
-                ]
-            }
-        }
+    if "application/json" in content_type:
+        body = await request.json()
+    elif "application/x-www-form-urlencoded" in content_type:
+        form = await request.form()
+        body = dict(form)
+    else:
+        return {"error": "Unsupported content-type"}
 
-    return {
-        "version": "2.0",
-        "template": {
-            "outputs": [
-                {
-                    "simpleText": {
-                        "text": f"입금 문자 수신됨:\n{content}"
-                    }
-                }
-            ]
-        }
-    }
+    deposit_logs.append(body)
+    return {"status": "received"}
+
+@app.get("/deposit-log")
+def get_deposit_logs():
+    return deposit_logs
+
+if __name__ == "__main__":
+    import uvicorn
+    port = int(os.environ.get("PORT", 8000))
+    uvicorn.run("main:app", host="0.0.0.0", port=port, reload=False)
 
 
 
