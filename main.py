@@ -7,16 +7,16 @@ from datetime import datetime
 
 app = FastAPI()
 
-# ✅ CORS 정확히 명시
+# ✅ CORS 정확히 허용할 Netlify 도메인 명시
 app.add_middleware(
     CORSMiddleware,
-    allow_origins=["https://genuine-treacle-599cab.netlify.app"],
+    allow_origins=["https://storied-kitsune-a986bd.netlify.app"],
     allow_credentials=True,
     allow_methods=["*"],
     allow_headers=["*"],
 )
 
-# 환경 변수에서 가져오기
+# 환경 변수
 CLIENT_ID = os.environ.get("CLIENT_ID")
 CLIENT_SECRET = os.environ.get("CLIENT_SECRET")
 TENANT_ID = os.environ.get("TENANT_ID")
@@ -26,6 +26,11 @@ EXCEL_ITEM_ID = "01BRDK2MMIGCGKWZHSVVEY7CR5K4RRESRZ"
 SHEET_NAME = "통합관리"
 RANGE_ADDRESS = "H1:Q30000"
 
+# 캐시 (선택 사항 - 속도 개선용)
+_excel_cache = {"data": None, "last_fetched": 0}
+CACHE_DURATION = 60
+
+# 헬퍼 함수들
 def normalize_phone(p):
     return str(p).replace("-", "").replace(" ", "").strip()
 
@@ -68,14 +73,14 @@ def get_excel_data(phone: str):
 
     try:
         phone = normalize_phone(phone)
-        contact1_idx = header.index("연러체1")
-        contact2_idx = header.index("연러체2")
-        name_idx = header.index("수체인명")
+        contact1_idx = header.index("연락처1")
+        contact2_idx = header.index("연락처2")
+        name_idx = header.index("수취인명")
         start_idx = header.index("시작일")
         end_idx = header.index("종료일")
         model_idx = header.index("제품명")
         return_idx = header.index("반납완료일") if "반납완료일" in header else None
-    except ValueError as e:
+    except ValueError:
         return None
 
     for row in reversed(rows):
@@ -85,16 +90,13 @@ def get_excel_data(phone: str):
 
         if phone == contact1 or phone == contact2:
             if not is_returned:
-                name = row[name_idx]
-                start = row[start_idx]
-                end = row[end_idx]
-                model = row[model_idx] if model_idx < len(row) else ""
                 return {
-                    "대여자명": name,
-                    "대여시작일": parse_excel_date(start),
-                    "대여종료일": parse_excel_date(end),
-                    "제품명": model
+                    "대여자명": row[name_idx],
+                    "대여시작일": parse_excel_date(row[start_idx]),
+                    "대여종료일": parse_excel_date(row[end_idx]),
+                    "제품명": row[model_idx] if model_idx < len(row) else ""
                 }
+
     return {
         "대여자명": None,
         "대여시작일": None,
@@ -102,15 +104,16 @@ def get_excel_data(phone: str):
         "제품명": None
     }
 
+# 📌 입금 문자 수신 저장용
+deposit_logs = []
+
 @app.get("/")
 def root():
     return {"message": "FastAPI Excel 연결 OK"}
 
 @app.get("/get-user-info")
-def get_user_info(phone: str = Query(..., description="전화번호('-' 없이) 입력")):
+def get_user_info(phone: str = Query(...)):
     return get_excel_data(phone)
-
-deposit_logs = []
 
 @app.post("/deposit-webhook")
 async def handle_sms(request: Request):
@@ -135,8 +138,6 @@ if __name__ == "__main__":
     import uvicorn
     port = int(os.environ.get("PORT", 8000))
     uvicorn.run("main:app", host="0.0.0.0", port=port, reload=False)
-
-
 
 
 
