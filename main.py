@@ -139,6 +139,72 @@ if __name__ == "__main__":
     port = int(os.environ.get("PORT", 8000))
     uvicorn.run("main:app", host="0.0.0.0", port=port, reload=False)
 
+# --- 이 코드를 기존 main.py 제일 아래에 추가하세요 ---
+
+from pydantic import BaseModel
+from typing import List
+import asyncpg
+import json
+
+# DB 연결 정보 (Render PostgreSQL 기준)
+DB_CONFIG = {
+    "user": os.environ.get("DB_USER"),
+    "password": os.environ.get("DB_PASSWORD"),
+    "database": os.environ.get("DB_NAME"),
+    "host": os.environ.get("DB_HOST"),
+    "port": 5432
+}
+
+# 메시지 모델 정의
+class Message(BaseModel):
+    user_id: str
+    role: str  # 'user' or 'bot'
+    message: str
+    timestamp: str  # ISO8601 문자열
+    read: bool = False
+
+# PostgreSQL 연결
+async def get_db():
+    return await asyncpg.connect(**DB_CONFIG)
+
+# 메시지 저장 API
+@app.post("/save-message")
+async def save_message(msg: Message):
+    conn = await get_db()
+    await conn.execute(
+        """
+        CREATE TABLE IF NOT EXISTS chat_logs (
+            id SERIAL PRIMARY KEY,
+            user_id TEXT,
+            role TEXT,
+            message TEXT,
+            timestamp TEXT,
+            read BOOLEAN
+        )
+        """
+    )
+    await conn.execute(
+        """
+        INSERT INTO chat_logs (user_id, role, message, timestamp, read)
+        VALUES ($1, $2, $3, $4, $5)
+        """,
+        msg.user_id, msg.role, msg.message, msg.timestamp, msg.read
+    )
+    await conn.close()
+    return {"status": "ok"}
+
+# 메시지 불러오기 API
+@app.get("/get-messages")
+async def get_messages(user_id: str):
+    conn = await get_db()
+    rows = await conn.fetch(
+        "SELECT role, message, timestamp, read FROM chat_logs WHERE user_id=$1 ORDER BY id ASC",
+        user_id
+    )
+    await conn.close()
+    return [dict(r) for r in rows]
+
+# 메시지 삭제 API + 백업용 엑셀 저장은 다음 단계에서
 
 
 
