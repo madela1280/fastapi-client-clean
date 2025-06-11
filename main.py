@@ -1,22 +1,26 @@
-from fastapi import FastAPI, Query, Body, Request
-from fastapi.middleware.cors import CORSMiddleware
+from fastapi import FastAPI, Query, Body, Request, Depends, HTTPException
+from sqlalchemy.orm import Session
 import requests
 import pandas as pd
 import os
 from datetime import datetime
 
+from cors_config import apply_cors  # ✅ 외부 CORS 적용 함수
+from models import Base, Message
+from database import engine, SessionLocal
+
+from typing import List
+import asyncpg
+from pydantic import BaseModel
+import json
+
+# ✅ FastAPI 인스턴스는 딱 여기서만 선언
 app = FastAPI()
+apply_cors(app)  # ✅ CORS 설정도 여기서만 적용
 
-# ✅ CORS 정확히 허용할 Netlify 도메인 명시
-app.add_middleware(
-    CORSMiddleware,
-    allow_origins=["https://storied-kitsune-a986bd.netlify.app"],
-    allow_credentials=True,
-    allow_methods=["*"],
-    allow_headers=["*"],
-)
-
-# 환경 변수
+# -------------------------
+# 환경 변수 및 캐시
+# -------------------------
 CLIENT_ID = os.environ.get("CLIENT_ID")
 CLIENT_SECRET = os.environ.get("CLIENT_SECRET")
 TENANT_ID = os.environ.get("TENANT_ID")
@@ -26,11 +30,12 @@ EXCEL_ITEM_ID = "01BRDK2MMIGCGKWZHSVVEY7CR5K4RRESRZ"
 SHEET_NAME = "통합관리"
 RANGE_ADDRESS = "H1:Q30000"
 
-# 캐시 (선택 사항 - 속도 개선용)
 _excel_cache = {"data": None, "last_fetched": 0}
 CACHE_DURATION = 60
 
-# 헬퍼 함수들
+# -------------------------
+# 유틸리티 함수들
+# -------------------------
 def normalize_phone(p):
     return str(p).replace("-", "").replace(" ", "").strip()
 
@@ -104,7 +109,9 @@ def get_excel_data(phone: str):
         "제품명": None
     }
 
-# 📌 입금 문자 수신 저장용
+# -------------------------
+# 기본 API
+# -------------------------
 deposit_logs = []
 
 @app.get("/")
@@ -118,7 +125,6 @@ def get_user_info(phone: str = Query(...)):
 @app.post("/deposit-webhook")
 async def handle_sms(request: Request):
     content_type = request.headers.get("content-type", "")
-
     if "application/json" in content_type:
         body = await request.json()
     elif "application/x-www-form-urlencoded" in content_type:
@@ -126,7 +132,6 @@ async def handle_sms(request: Request):
         body = dict(form)
     else:
         return {"error": "Unsupported content-type"}
-
     deposit_logs.append(body)
     return {"status": "received"}
 
@@ -134,19 +139,9 @@ async def handle_sms(request: Request):
 def get_deposit_logs():
     return deposit_logs
 
-if __name__ == "__main__":
-    import uvicorn
-    port = int(os.environ.get("PORT", 8000))
-    uvicorn.run("main:app", host="0.0.0.0", port=port, reload=False)
-
-# --- 이 코드를 기존 main.py 제일 아래에 추가하세요 ---
-
-from pydantic import BaseModel
-from typing import List
-import asyncpg
-import json
-
-# DB 연결 정보 (Render PostgreSQL 기준)
+# -------------------------
+# PostgreSQL 기반 메시지 저장/조회
+# -------------------------
 DB_CONFIG = {
     "user": os.environ.get("DB_USER"),
     "password": os.environ.get("DB_PASSWORD"),
@@ -155,24 +150,20 @@ DB_CONFIG = {
     "port": 5432
 }
 
-# 메시지 모델 정의
-class Message(BaseModel):
+class MessagePG(BaseModel):
     user_id: str
-    role: str  # 'user' or 'bot'
+    role: str
     message: str
-    timestamp: str  # ISO8601 문자열
+    timestamp: str
     read: bool = False
 
-# PostgreSQL 연결
-async def get_db():
+async def get_db_pg():
     return await asyncpg.connect(**DB_CONFIG)
 
-# 메시지 저장 API
 @app.post("/save-message")
-async def save_message(msg: Message):
-    conn = await get_db()
-    await conn.execute(
-        """
+async def save_message_pg(msg: MessagePG):
+    conn = await get_db_pg()
+    await conn.execute("""
         CREATE TABLE IF NOT EXISTS chat_logs (
             id SERIAL PRIMARY KEY,
             user_id TEXT,
@@ -181,22 +172,17 @@ async def save_message(msg: Message):
             timestamp TEXT,
             read BOOLEAN
         )
-        """
-    )
-    await conn.execute(
-        """
+    """)
+    await conn.execute("""
         INSERT INTO chat_logs (user_id, role, message, timestamp, read)
         VALUES ($1, $2, $3, $4, $5)
-        """,
-        msg.user_id, msg.role, msg.message, msg.timestamp, msg.read
-    )
+    """, msg.user_id, msg.role, msg.message, msg.timestamp, msg.read)
     await conn.close()
     return {"status": "ok"}
 
-# 메시지 불러오기 API
 @app.get("/get-messages")
-async def get_messages(user_id: str):
-    conn = await get_db()
+async def get_messages_pg(user_id: str):
+    conn = await get_db_pg()
     rows = await conn.fetch(
         "SELECT role, message, timestamp, read FROM chat_logs WHERE user_id=$1 ORDER BY id ASC",
         user_id
@@ -204,8 +190,56 @@ async def get_messages(user_id: str):
     await conn.close()
     return [dict(r) for r in rows]
 
-# 메시지 삭제 API + 백업용 엑셀 저장은 다음 단계에서
+# -------------------------
+# SQLAlchemy 기반 메시지 저장/조회
+# -------------------------
+Base.metadata.create_all(bind=engine)
 
+def get_db():
+    db = SessionLocal()
+    try:
+        yield db
+    finally:
+        db.close()
 
+@app.post("/messages")
+def save_message(user_id: str, sender: str, content: str, db: Session = Depends(get_db)):
+    message = Message(user_id=user_id, sender=sender, content=content)
+    db.add(message)
+    db.commit()
+    db.refresh(message)
+    return {"message_id": message.id, "status": "saved"}
 
+@app.get("/messages/list")
+def get_message_list(user_id: str, db: Session = Depends(get_db)):
+    messages = db.query(Message).filter(Message.user_id == user_id).order_by(Message.timestamp).all()
+    return [
+        {
+            "sender": m.sender,
+            "content": m.content,
+            "timestamp": m.timestamp
+        }
+        for m in messages
+    ]
+
+@app.get("/admin/chat-list")
+def get_chat_list(db: Session = Depends(get_db)):
+    user_ids = db.query(Message.user_id).distinct().all()
+    result = []
+    for (user_id,) in user_ids:
+        latest_msg = (
+            db.query(Message)
+            .filter(Message.user_id == user_id)
+            .order_by(Message.timestamp.desc())
+            .first()
+        )
+        if latest_msg:
+            result.append({
+                "user_id": latest_msg.user_id,
+                "sender": latest_msg.sender,
+                "content": latest_msg.content,
+                "timestamp": latest_msg.timestamp
+            })
+    result.sort(key=lambda x: x["timestamp"], reverse=True)
+    return result
 
