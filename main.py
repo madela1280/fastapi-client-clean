@@ -191,7 +191,7 @@ async def get_messages_pg(user_id: str):
     return [dict(r) for r in rows]
 
 # -------------------------
-# SQLAlchemy 기반 메시지 저장/조회
+# SQLAlchemy 기반 관리자 화면용 메시지 조회
 # -------------------------
 Base.metadata.create_all(bind=engine)
 
@@ -201,14 +201,6 @@ def get_db():
         yield db
     finally:
         db.close()
-
-@app.post("/messages")
-def save_message(user_id: str, sender: str, content: str, db: Session = Depends(get_db)):
-    message = Message(user_id=user_id, sender=sender, content=content)
-    db.add(message)
-    db.commit()
-    db.refresh(message)
-    return {"message_id": message.id, "status": "saved"}
 
 @app.get("/messages/list")
 def get_message_list(user_id: str, db: Session = Depends(get_db)):
@@ -242,4 +234,6 @@ def get_chat_list(db: Session = Depends(get_db)):
             })
     result.sort(key=lambda x: x["timestamp"], reverse=True)
     return result
+
+
 
