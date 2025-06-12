@@ -7,7 +7,8 @@ def apply_cors(app):
         "https://taupe-fox-b0ad0f.netlify.app",
         "https://idyllic-lamington-08426a.netlify.app",
         "https://cheerful-dolphin-1519ed.netlify.app",
-        "https://lighthearted-cucurucho-c8d1c4.netlify.app"  # ✅ 지금 사용 중인 도메인 추가
+        "https://lighthearted-cucurucho-c8d1c4.netlify.app",
+        "https://celebrated-donut-5579ea.netlify.app"  # ✅ 이 줄 추가!
     ]
 
     app.add_middleware(
