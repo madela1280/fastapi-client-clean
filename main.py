@@ -179,3 +179,11 @@ def get_chat_list(db: Session = Depends(get_db)):
             })
     result.sort(key=lambda x: x["timestamp"], reverse=True)
     return result
+
+import os
+
+if __name__ == "__main__":
+    import uvicorn
+    port = int(os.environ.get("PORT", 8000))
+    uvicorn.run("main:app", host="0.0.0.0", port=port)
+
