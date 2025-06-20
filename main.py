@@ -5,10 +5,9 @@ import requests
 import pandas as pd
 import os
 from datetime import datetime
-from models import Base, Message, MessageCreate  # ✅ 이 줄이 중요!
+from models import Base, Message, MessageCreate
 from database import engine, SessionLocal
 from typing import List
-import json
 
 app = FastAPI()
 
@@ -62,24 +61,29 @@ def get_excel_data(phone: str):
     headers = {"Authorization": f"Bearer {token}"}
     response = requests.get(url, headers=headers)
     data = response.json()
-    values = data.get("values")
+    values = data.get("values", [])
+
     if not values:
-        return None
+        return {
+            "error": "Excel 범위에 데이터가 없습니다. 시트 이름 또는 범위를 확인하세요."
+        }
 
     header = values[0]
     rows = values[1:]
 
     try:
         phone = normalize_phone(phone)
-        contact1_idx = header.index("\uc5f0\ub78c\ucc981")
-        contact2_idx = header.index("\uc5f0\ub78c\ucc982")
-        name_idx = header.index("\uc218\uce58\uc778\uba85")
-        start_idx = header.index("\uc2dc\uc791\uc77c")
-        end_idx = header.index("\uc885\ub8cc\uc77c")
-        model_idx = header.index("\uc81c\ud488\uba85")
-        return_idx = header.index("\ubc18\ub0a9\uc644\ub8cc\uc77c") if "\ubc18\ub0a9\uc644\ub8cc\uc77c" in header else None
+        contact1_idx = header.index("연락처1")
+        contact2_idx = header.index("연락처2")
+        name_idx = header.index("수취인명")
+        start_idx = header.index("시작일")
+        end_idx = header.index("종료일")
+        model_idx = header.index("제품명")
+        return_idx = header.index("반납완료일") if "반납완료일" in header else None
     except ValueError:
-        return None
+        return {
+            "error": "Excel에서 필요한 열(연락처1, 수취인명 등)을 찾을 수 없습니다."
+        }
 
     for row in reversed(rows):
         contact1 = normalize_phone(row[contact1_idx]) if contact1_idx < len(row) else ""
@@ -88,17 +92,22 @@ def get_excel_data(phone: str):
         if phone == contact1 or phone == contact2:
             if not is_returned:
                 return {
-                    "\ub300\uc5ec\uc790\uba85": row[name_idx],
-                    "\ub300\uc5ec\uc2dc\uc791\uc77c": parse_excel_date(row[start_idx]),
-                    "\ub300\uc5ec\uc885\ub8cc\uc77c": parse_excel_date(row[end_idx]),
-                    "\uc81c\ud488\uba85": row[model_idx] if model_idx < len(row) else ""
+                    "대여자명": row[name_idx],
+                    "대여시작일": parse_excel_date(row[start_idx]),
+                    "대여종료일": parse_excel_date(row[end_idx]),
+                    "제품명": row[model_idx] if model_idx < len(row) else ""
                 }
 
-    return {"\ub300\uc5ec\uc790\uba85": None, "\ub300\uc5ec\uc2dc\uc791\uc77c": None, "\ub300\uc5ec\uc885\ub8cc\uc77c": None, "\uc81c\ud488\uba85": None}
+    return {
+        "대여자명": None,
+        "대여시작일": None,
+        "대여종료일": None,
+        "제품명": None
+    }
 
 @app.get("/")
 def root():
-    return {"message": "FastAPI Excel \uc5f0\uacb0 OK"}
+    return {"message": "FastAPI Excel 연결 OK"}
 
 @app.get("/get-user-info")
 def get_user_info(phone: str = Query(...)):
@@ -180,13 +189,12 @@ def get_chat_list(db: Session = Depends(get_db)):
     result.sort(key=lambda x: x["timestamp"], reverse=True)
     return result
 
-# ✅ 데이터베이스 테이블 생성 (최초 1회 자동 생성용)
+# ✅ DB 테이블 생성
 Base.metadata.create_all(bind=engine)
-
-import os
 
 if __name__ == "__main__":
     import uvicorn
     port = int(os.environ.get("PORT", 8000))
     uvicorn.run("main:app", host="0.0.0.0", port=port)
+
 
