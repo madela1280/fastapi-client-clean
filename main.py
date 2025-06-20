@@ -180,6 +180,9 @@ def get_chat_list(db: Session = Depends(get_db)):
     result.sort(key=lambda x: x["timestamp"], reverse=True)
     return result
 
+# ✅ 데이터베이스 테이블 생성 (최초 1회 자동 생성용)
+Base.metadata.create_all(bind=engine)
+
 import os
 
 if __name__ == "__main__":
