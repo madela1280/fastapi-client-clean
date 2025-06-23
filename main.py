@@ -71,7 +71,7 @@ def get_excel_data(phone: str):
     if not values or len(values) < 2:
         raise ValueError("❌ 데이터 없음: 엑셀에서 값을 가져오지 못했습니다.")
 
-    header = values[0]
+    header = [h.strip() for h in values[0]]
     rows = values[1:]
 
     try:
