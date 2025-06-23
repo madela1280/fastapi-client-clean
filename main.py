@@ -1,4 +1,4 @@
-from fastapi import FastAPI, Query, Body, Request, Depends
+from fastapi import FastAPI, Query, Request, Depends
 from fastapi.middleware.cors import CORSMiddleware
 from sqlalchemy.orm import Session
 import requests
@@ -11,6 +11,7 @@ from typing import List
 
 app = FastAPI()
 
+# CORS 설정
 app.add_middleware(
     CORSMiddleware,
     allow_origins=["*"],
@@ -19,16 +20,18 @@ app.add_middleware(
     allow_headers=["*"],
 )
 
-_excel_cache = {"data": None, "last_fetched": 0}
-CACHE_DURATION = 60
-
+# 환경변수
 CLIENT_ID = os.environ.get("CLIENT_ID")
 CLIENT_SECRET = os.environ.get("CLIENT_SECRET")
 TENANT_ID = os.environ.get("TENANT_ID")
+PORT = int(os.environ.get("PORT", 10000))
+
+# 고정값
 SHAREPOINT_SITE_ID = "satmoulab.sharepoint.com,102fbb5d-7970-47e4-8686-f6d7fac0375f,cac8f27f-7023-4427-a96f-bd777b42c781"
 EXCEL_ITEM_ID = "01BRDK2MMIGCGKWZHSVVEY7CR5K4RRESRZ"
 SHEET_NAME = "통합관리"
-RANGE_ADDRESS = "H1:Q30000"
+RANGE_ADDRESS = "J1:Q30000"
+DAILY_LATE_FEE = 1000  # 1일 연체료
 
 def normalize_phone(p): return str(p).replace("-", "").replace(" ", "").strip()
 
@@ -61,58 +64,84 @@ def get_excel_data(phone: str):
     headers = {"Authorization": f"Bearer {token}"}
     response = requests.get(url, headers=headers)
     data = response.json()
-    values = data.get("values", [])
 
-    if not values:
-        return {
-            "error": "Excel 범위에 데이터가 없습니다. 시트 이름 또는 범위를 확인하세요."
-        }
+    print("📥 응답 데이터 (data):", data)
+
+    values = data.get("values", [])
+    if not values or len(values) < 2:
+        raise ValueError("❌ 데이터 없음: 엑셀에서 값을 가져오지 못했습니다.")
 
     header = values[0]
     rows = values[1:]
 
     try:
-        phone = normalize_phone(phone)
         contact1_idx = header.index("연락처1")
         contact2_idx = header.index("연락처2")
         name_idx = header.index("수취인명")
         start_idx = header.index("시작일")
         end_idx = header.index("종료일")
         model_idx = header.index("제품명")
-        return_idx = header.index("반납완료일") if "반납완료일" in header else None
-    except ValueError:
-        return {
-            "error": "Excel에서 필요한 열(연락처1, 수취인명 등)을 찾을 수 없습니다."
-        }
+        return_idx = header.index("반납완료일")
+    except ValueError as e:
+        return {"error": f"필수 열 불러오기 실패: {e}"}
+
+    phone = normalize_phone(phone)
 
     for row in reversed(rows):
+        if len(row) < len(header):
+            continue
         contact1 = normalize_phone(row[contact1_idx]) if contact1_idx < len(row) else ""
         contact2 = normalize_phone(row[contact2_idx]) if contact2_idx < len(row) else ""
-        is_returned = row[return_idx] if return_idx is not None and len(row) > return_idx else None
+        is_returned = row[return_idx] if return_idx < len(row) else None
+
         if phone == contact1 or phone == contact2:
-            if not is_returned:
-                return {
-                    "대여자명": row[name_idx],
-                    "대여시작일": parse_excel_date(row[start_idx]),
-                    "대여종료일": parse_excel_date(row[end_idx]),
-                    "제품명": row[model_idx] if model_idx < len(row) else ""
-                }
+            name = row[name_idx] if name_idx < len(row) else ""
+            start = row[start_idx] if start_idx < len(row) else ""
+            end = row[end_idx] if end_idx < len(row) else ""
+            model = row[model_idx] if model_idx < len(row) else ""
+            today = datetime.today().strftime("%Y-%m-%d")
+
+            start_date = parse_excel_date(start)
+            end_date = parse_excel_date(end)
+            is_late = False
+            late_days = 0
+            late_fee = 0
+
+            if not is_returned and end_date < today:
+                is_late = True
+                late_days = (datetime.strptime(today, "%Y-%m-%d") - datetime.strptime(end_date, "%Y-%m-%d")).days
+                late_fee = late_days * DAILY_LATE_FEE
+
+            return {
+                "대여자명": name,
+                "대여시작일": start_date,
+                "대여종료일": end_date,
+                "제품명": model,
+                "연체여부": "Y" if is_late else "N",
+                "연체일수": late_days,
+                "연체료": late_fee
+            }
 
     return {
         "대여자명": None,
         "대여시작일": None,
         "대여종료일": None,
-        "제품명": None
+        "제품명": None,
+        "연체여부": None,
+        "연체일수": None,
+        "연체료": None
     }
 
 @app.get("/")
 def root():
-    return {"message": "FastAPI Excel 연결 OK"}
+    result = get_site_id_from_graph()
+    return {"message": "FastAPI Excel 연결 OK", "site_id": result}
 
 @app.get("/get-user-info")
 def get_user_info(phone: str = Query(...)):
     return get_excel_data(phone)
 
+# 입금 webhook
 deposit_logs = []
 
 @app.post("/deposit-webhook")
@@ -132,6 +161,7 @@ async def handle_sms(request: Request):
 def get_deposit_logs():
     return deposit_logs
 
+# DB 세션
 def get_db():
     db = SessionLocal()
     try:
@@ -156,8 +186,7 @@ async def save_message(msg: MessageCreate, db: Session = Depends(get_db)):
 def get_message_list(user_id: str, db: Session = Depends(get_db)):
     messages = db.query(Message).filter(
         Message.user_id == user_id
-    ).order_by(Message.timestamp.desc()).limit(500).all()
-
+    ).order_by(Message.timestamp.asc()).limit(500).all()
     return [
         {
             "id": m.id,
@@ -165,12 +194,14 @@ def get_message_list(user_id: str, db: Session = Depends(get_db)):
             "content": m.content,
             "timestamp": m.timestamp
         }
-        for m in reversed(messages)
+        for m in messages
     ]
 
 @app.get("/admin/chat-list")
 def get_chat_list(db: Session = Depends(get_db)):
-    user_ids = db.query(Message.user_id).filter(Message.sender.in_(["user", "bot", "admin"])).distinct().all()
+    user_ids = db.query(Message.user_id).filter(
+        Message.sender.in_(["user", "bot", "admin"])
+    ).distinct().all()
     result = []
     for (user_id,) in user_ids:
         latest_msg = (
@@ -189,12 +220,15 @@ def get_chat_list(db: Session = Depends(get_db)):
     result.sort(key=lambda x: x["timestamp"], reverse=True)
     return result
 
-# ✅ DB 테이블 생성
 Base.metadata.create_all(bind=engine)
 
-if __name__ == "__main__":
-    import uvicorn
-    port = int(os.environ.get("PORT", 8000))
-    uvicorn.run("main:app", host="0.0.0.0", port=port)
+# site-id 확인용 함수
+def get_site_id_from_graph():
+    token = get_access_token()
+    url = "https://graph.microsoft.com/v1.0/sites/satmoulab.sharepoint.com:/sites/rental_data"
+    headers = {"Authorization": f"Bearer {token}"}
+    response = requests.get(url, headers=headers)
+    print("📍 site-id 결과:", response.json())
+    return response.json()
 
 
