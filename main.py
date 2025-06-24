@@ -244,7 +244,7 @@ def get_site_id_from_graph():
     url = "https://graph.microsoft.com/v1.0/sites/satmoulab.sharepoint.com:/sites/rental_data"
     headers = {"Authorization": f"Bearer {token}"}
     response = requests.get(url, headers=headers)
-    print("\ud83d\udccd site-id 결과:", response.status_code, response.text)
+    print("site-id 결과:", response.status_code, response.text)
     return response.json()
 
 @app.head("/", include_in_schema=False)
