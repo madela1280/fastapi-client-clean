@@ -30,7 +30,7 @@ PORT = int(os.environ.get("PORT", 10000))
 SHAREPOINT_SITE_ID = "satmoulab.sharepoint.com,102fbb5d-7970-47e4-8686-f6d7fac0375f,cac8f27f-7023-4427-a96f-bd777b42c781"
 EXCEL_ITEM_ID = "01BRDK2MMIGCGKWZHSVVEY7CR5K4RRESRZ"
 SHEET_NAME = "통합관리"
-RANGE_ADDRESS = "J1:Q30000"
+RANGE_ADDRESS = "A1:Q30000"
 DAILY_LATE_FEE = 1000  # 1일 연체료
 
 def normalize_phone(p): return str(p).replace("-", "").replace(" ", "").strip()
