@@ -238,4 +238,11 @@ def get_site_id_from_graph():
 async def root_head():
     return Response(status_code=200)
 
+from fastapi import Request
+
+@app.post("/save-message")
+async def save_message(req: Request):
+    data = await req.json()
+    print("📥 저장 요청 수신:", data)
+    return {"status": "ok"}
 
