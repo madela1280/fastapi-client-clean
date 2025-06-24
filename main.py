@@ -69,9 +69,9 @@ def get_excel_data(phone: str):
     if not values or len(values) < 2:
         raise ValueError("❌ 데이터 없음: 엑셀에서 값을 가져오지 못했습니다.")
 
-    header = [str(h).strip() for h in values[1]]
+    header = [str(h).strip() for h in values[0]]
     header_map = {h: i for i, h in enumerate(header)}
-    rows = values[2:]
+    rows = values[1:]
 
     print("📌 헤더 확인:", header)
 
