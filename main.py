@@ -8,6 +8,7 @@ from datetime import datetime
 from models import Base, Message, MessageCreate
 from database import engine, SessionLocal
 from typing import List
+from fastapi import Response
 
 app = FastAPI()
 
@@ -232,5 +233,9 @@ def get_site_id_from_graph():
     response = requests.get(url, headers=headers)
     print("📍 site-id 결과:", response.status_code, response.text)  # ← 이 줄 추가
     return response.json()
+
+@app.head("/", include_in_schema=False)
+async def root_head():
+    return Response(status_code=200)
 
 
