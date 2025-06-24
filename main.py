@@ -64,6 +64,7 @@ def get_excel_data(phone: str):
     url = f"https://graph.microsoft.com/v1.0/sites/{SHAREPOINT_SITE_ID}/drive/items/{EXCEL_ITEM_ID}/workbook/worksheets('{SHEET_NAME}')/range(address='{RANGE_ADDRESS}')"
     headers = {"Authorization": f"Bearer {token}"}
     response = requests.get(url, headers=headers)
+    print("📍 Excel 요청 응답:", response.status_code, response.text)  # ← 이 줄 추가
     data = response.json()
 
     values = data.get("values", [])
