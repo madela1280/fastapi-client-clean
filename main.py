@@ -142,9 +142,16 @@ def root():
 
 @app.post("/get-user-info")
 async def get_user_info(req: Request):
-    data = await req.json()
-    phone = data.get("phone")
-    return get_excel_data(phone)
+    try:
+        data = await req.json()
+        phone = data.get("phone")
+        if not phone:
+            return {"error": "전화번호가 누락되었습니다."}
+        result = get_excel_data(phone)
+        return result
+    except Exception as e:
+        print("❌ get-user-info 오류 발생:", str(e))
+        return {"error": f"내부 오류: {str(e)}"}
 
 # 입금 webhook
 deposit_logs = []
