@@ -9,6 +9,7 @@ from models import Base, Message, MessageCreate
 from database import engine, SessionLocal
 from typing import List
 from pydantic import BaseModel
+from fastapi.encoders import jsonable_encoder
 
 app = FastAPI()
 
@@ -150,11 +151,10 @@ async def get_user_info(req: PhoneRequest):
         phone = req.phone
         if not phone:
             return {"error": "전화번호가 누락되었습니다."}
-
         result = get_excel_data(phone)
-        return jsonable_encoder(result)  # ← 이 줄로 변경
+        return jsonable_encoder(result)  # ← 여기서 안전하게 인코딩
     except Exception as e:
-        print("\u274c get-user-info 오류 발생:", str(e))
+        print("❌ get-user-info 오류 발생:", str(e))
         return {"error": f"내부 오류: {str(e)}"}
 
 # 입금 webhook
