@@ -65,31 +65,34 @@ def get_excel_data(phone: str):
     response = requests.get(url, headers=headers)
     data = response.json()
 
-    print("📥 응답 데이터 (data):", data)
-
     values = data.get("values", [])
     if not values or len(values) < 2:
         raise ValueError("❌ 데이터 없음: 엑셀에서 값을 가져오지 못했습니다.")
 
-    header = [h.strip() for h in values[0]]
+    header = [str(h).strip() for h in values[0]]
+    header_map = {h: i for i, h in enumerate(header)}
     rows = values[1:]
 
+    print("📌 헤더 확인:", header)
+
     try:
-        contact1_idx = header.index("연락처1")
-        contact2_idx = header.index("연락처2")
-        name_idx = header.index("수취인명")
-        start_idx = header.index("시작일")
-        end_idx = header.index("종료일")
-        model_idx = header.index("제품명")
-        return_idx = header.index("반납완료일")
-    except ValueError as e:
+        contact1_idx = header_map["연락처1"]
+        contact2_idx = header_map["연락처2"]
+        name_idx = header_map["수취인명"]
+        start_idx = header_map["시작일"]
+        end_idx = header_map["종료일"]
+        model_idx = header_map["제품명"]
+        return_idx = header_map["반납완료일"]
+    except KeyError as e:
         return {"error": f"필수 열 불러오기 실패: {e}"}
 
     phone = normalize_phone(phone)
+    today = datetime.today().strftime("%Y-%m-%d")
 
     for row in reversed(rows):
         if len(row) < len(header):
             continue
+
         contact1 = normalize_phone(row[contact1_idx]) if contact1_idx < len(row) else ""
         contact2 = normalize_phone(row[contact2_idx]) if contact2_idx < len(row) else ""
         is_returned = row[return_idx] if return_idx < len(row) else None
@@ -99,7 +102,6 @@ def get_excel_data(phone: str):
             start = row[start_idx] if start_idx < len(row) else ""
             end = row[end_idx] if end_idx < len(row) else ""
             model = row[model_idx] if model_idx < len(row) else ""
-            today = datetime.today().strftime("%Y-%m-%d")
 
             start_date = parse_excel_date(start)
             end_date = parse_excel_date(end)
