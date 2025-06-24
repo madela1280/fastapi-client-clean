@@ -150,8 +150,9 @@ async def get_user_info(req: PhoneRequest):
         phone = req.phone
         if not phone:
             return {"error": "전화번호가 누락되었습니다."}
+
         result = get_excel_data(phone)
-        return result
+        return jsonable_encoder(result)  # ← 이 줄로 변경
     except Exception as e:
         print("\u274c get-user-info 오류 발생:", str(e))
         return {"error": f"내부 오류: {str(e)}"}
