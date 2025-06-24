@@ -9,6 +9,7 @@ from models import Base, Message, MessageCreate
 from database import engine, SessionLocal
 from typing import List
 from fastapi import Response
+from fastapi import Request
 
 app = FastAPI()
 
@@ -140,8 +141,10 @@ def root():
     result = get_site_id_from_graph()
     return {"message": "FastAPI Excel 연결 OK", "site_id": result}
 
-@app.get("/get-user-info")
-def get_user_info(phone: str = Query(...)):
+@app.post("/get-user-info")
+async def get_user_info(req: Request):
+    data = await req.json()
+    phone = data.get("phone")
     return get_excel_data(phone)
 
 # 입금 webhook
