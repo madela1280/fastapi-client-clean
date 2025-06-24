@@ -9,7 +9,6 @@ from models import Base, Message, MessageCreate
 from database import engine, SessionLocal
 from typing import List
 from fastapi import Response
-from fastapi import Request
 
 app = FastAPI()
 
@@ -240,12 +239,4 @@ def get_site_id_from_graph():
 @app.head("/", include_in_schema=False)
 async def root_head():
     return Response(status_code=200)
-
-from fastapi import Request
-
-@app.post("/save-message")
-async def save_message(req: Request):
-    data = await req.json()
-    print("📥 저장 요청 수신:", data)
-    return {"status": "ok"}
 
