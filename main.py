@@ -1,4 +1,4 @@
-from fastapi import FastAPI, Query, Request, Depends
+from fastapi import FastAPI, Query, Request, Depends, Response
 from fastapi.middleware.cors import CORSMiddleware
 from sqlalchemy.orm import Session
 import requests
@@ -8,7 +8,7 @@ from datetime import datetime
 from models import Base, Message, MessageCreate
 from database import engine, SessionLocal
 from typing import List
-from fastapi import Response
+from pydantic import BaseModel
 
 app = FastAPI()
 
@@ -33,6 +33,9 @@ EXCEL_ITEM_ID = "01BRDK2MMIGCGKWZHSVVEY7CR5K4RRESRZ"
 SHEET_NAME = "통합관리"
 RANGE_ADDRESS = "A1:Q30000"
 DAILY_LATE_FEE = 1000  # 1일 연체료
+
+class PhoneRequest(BaseModel):
+    phone: str
 
 def normalize_phone(p): return str(p).replace("-", "").replace(" ", "").strip()
 
@@ -64,18 +67,18 @@ def get_excel_data(phone: str):
     url = f"https://graph.microsoft.com/v1.0/sites/{SHAREPOINT_SITE_ID}/drive/items/{EXCEL_ITEM_ID}/workbook/worksheets('{SHEET_NAME}')/range(address='{RANGE_ADDRESS}')"
     headers = {"Authorization": f"Bearer {token}"}
     response = requests.get(url, headers=headers)
-    print("📍 Excel 요청 응답:", response.status_code, response.text)  # ← 이 줄 추가
+    print("\ud83d\udccd Excel 요청 응답:", response.status_code, response.text)
     data = response.json()
 
     values = data.get("values", [])
     if not values or len(values) < 2:
-        raise ValueError("❌ 데이터 없음: 엑셀에서 값을 가져오지 못했습니다.")
+        raise ValueError("\u274c 데이터 없음: 엑셀에서 값을 가져오지 못했습니다.")
 
     header = [str(h).strip() for h in values[0]]
     header_map = {h: i for i, h in enumerate(header)}
     rows = values[1:]
 
-    print("📌 헤더 확인:", header)
+    print("\ud83d\udccc 헤더 확인:", header)
 
     try:
         contact1_idx = header_map["연락처1"]
@@ -142,16 +145,15 @@ def root():
     return {"message": "FastAPI Excel 연결 OK", "site_id": result}
 
 @app.post("/get-user-info")
-async def get_user_info(req: Request):
+async def get_user_info(req: PhoneRequest):
     try:
-        data = await req.json()
-        phone = data.get("phone")
+        phone = req.phone
         if not phone:
             return {"error": "전화번호가 누락되었습니다."}
         result = get_excel_data(phone)
         return result
     except Exception as e:
-        print("❌ get-user-info 오류 발생:", str(e))
+        print("\u274c get-user-info 오류 발생:", str(e))
         return {"error": f"내부 오류: {str(e)}"}
 
 # 입금 webhook
@@ -241,7 +243,7 @@ def get_site_id_from_graph():
     url = "https://graph.microsoft.com/v1.0/sites/satmoulab.sharepoint.com:/sites/rental_data"
     headers = {"Authorization": f"Bearer {token}"}
     response = requests.get(url, headers=headers)
-    print("📍 site-id 결과:", response.status_code, response.text)  # ← 이 줄 추가
+    print("\ud83d\udccd site-id 결과:", response.status_code, response.text)
     return response.json()
 
 @app.head("/", include_in_schema=False)
