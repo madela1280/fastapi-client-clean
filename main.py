@@ -154,7 +154,7 @@ async def get_user_info(req: PhoneRequest):
         result = get_excel_data(phone)
         return jsonable_encoder(result)  # ← 여기서 안전하게 인코딩
     except Exception as e:
-        print("❌ get-user-info 오류 발생:", str(e))
+        print("get-user-info 오류 발생:", str(e))
         return {"error": f"내부 오류: {str(e)}"}
 
 # 입금 webhook
