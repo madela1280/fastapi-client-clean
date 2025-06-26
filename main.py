@@ -261,3 +261,6 @@ def get_site_id_from_graph():
 async def root_head():
     return Response(status_code=200)
 
+# 재배포용 수정: 2025-06-26
+
+
