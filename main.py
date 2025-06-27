@@ -1,19 +1,29 @@
 from fastapi import FastAPI, Query, Request, Depends, Response
 from fastapi.middleware.cors import CORSMiddleware
 from sqlalchemy.orm import Session
+from sqlalchemy import create_engine
+from sqlalchemy.orm import sessionmaker
 import requests
 import pandas as pd
 import os
 from datetime import datetime
 from models import Base, Message, MessageCreate
-from database import engine, SessionLocal
 from typing import List
 from pydantic import BaseModel
 from fastapi.encoders import jsonable_encoder
 
+# ✅ DB 연결 설정
+DATABASE_URL = "sqlite:///./chat.db"
+
+engine = create_engine(
+    DATABASE_URL, connect_args={"check_same_thread": False}
+)
+SessionLocal = sessionmaker(autocommit=False, autoflush=False, bind=engine)
+
+# ✅ FastAPI 인스턴스 생성
 app = FastAPI()
 
-# CORS 설정
+# ✅ CORS 설정
 app.add_middleware(
     CORSMiddleware,
     allow_origins=["*"],
