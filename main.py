@@ -207,6 +207,8 @@ def get_db():
 
 @app.post("/save-message")
 async def save_message(msg: MessageCreate, db: Session = Depends(get_db)):
+    print("💾 저장된 메시지:", msg.dict())  # ✅ 이 줄 추가
+
     new_msg = Message(
         user_id=msg.user_id,
         sender=msg.role,
