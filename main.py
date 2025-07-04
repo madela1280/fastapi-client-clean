@@ -224,7 +224,10 @@ async def save_message(msg: MessageCreate, db: Session = Depends(get_db)):
 def get_message_list(user_id: str, db: Session = Depends(get_db)):
     messages = db.query(Message).filter(
         Message.user_id == user_id
-    ).order_by(Message.timestamp.asc()).limit(500).all()
+    ).order_by(Message.timestamp.desc()).limit(100).all()
+
+    messages.reverse()  # 오래된 순 정렬로 전환
+
     return [
         {
             "id": m.id,
