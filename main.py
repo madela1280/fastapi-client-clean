@@ -274,4 +274,20 @@ def get_site_id_from_graph():
 async def root_head():
     return Response(status_code=200)
 
+@app.post("/store-username")
+async def store_username(request: Request):
+    try:
+        body = await request.json()
+        user_name = body.get("userName")
+        user_id = body.get("userId")  # 전화번호나 식별 ID
 
+        if not user_name or not user_id:
+            return {"error": "userName과 userId 모두 필요합니다."}
+
+        # DB 없이 임시 저장용 (프로토타입용)
+        deposit_logs.append({"user_id": user_id, "user_name": user_name, "timestamp": datetime.now().isoformat()})
+
+        return {"status": "stored", "userName": user_name, "userId": user_id}
+
+    except Exception as e:
+        return {"error": str(e)}
